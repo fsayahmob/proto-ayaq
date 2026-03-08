@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
+<title>Esprit Padel — Configurateur Intelligent</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&family=Outfit:wght@200;300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a0a;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+@keyframes fadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideR{from{opacity:0;transform:translateX(-20px)}to{opacity:1;transform:translateX(0)}}
+@keyframes breathe{0%,100%{transform:scale(1);opacity:0.4}50%{transform:scale(1.1);opacity:1}}
+@keyframes pulse{0%,100%{opacity:0.2}50%{opacity:1}}
+@keyframes nudgeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideDown{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:translateY(0)}}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:#0a0a0a}
+::-webkit-scrollbar-thumb{background:#333}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:3px;background:rgba(255,255,255,0.1);outline:none;border-radius:2px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:#e8a838;cursor:pointer;border:2px solid #0a0a0a}
+</style>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef}=React;
+const T={black:"#0a0a0a",ch:"#161616",grey:"#8a8a8a",light:"#c8c8c8",white:"#fafaf8",acc:"#f5d6a0",acc2:"#e8a838",df:"'Cormorant Garamond',Georgia,serif",bf:"'Outfit',system-ui,sans-serif"};
+
+/* ═══ PADEL EXPERTISE — SCORING ENGINE ═══
+
+   Flow: Genre → Niveau → Style de jeu → Position → Fréquence → (Blessures?) → Résultats
+
+   Scoring vectors per product: [controle, puissance, maniabilite, tolerance, spin, confort, durabilite]
+
+   1. Build ideal profile from level + play style + position
+   2. Frequency adjusts durability needs
+   3. Injuries shift toward comfort/lightweight
+   4. Budget filters candidates
+   5. Score = weighted dot product, best per category wins
+*/
+
+/* ═══ PLAYER LEVELS ═══ */
+const LEVELS=[
+  {id:"debutant",label:"Je débute",e:"🟢",d:"Moins de 6 mois de pratique",img:"https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=400&h=500&fit=crop"},
+  {id:"intermediaire",label:"Intermédiaire",e:"🟡",d:"1-3 ans, je maîtrise les bases",img:"https://images.unsplash.com/photo-1612534847738-b3f3c5e5e5e1?w=400&h=500&fit=crop"},
+  {id:"avance",label:"Avancé",e:"🟠",d:"3+ ans, compétition occasionnelle",img:"https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=400&h=500&fit=crop"},
+  {id:"expert",label:"Expert / Compétiteur",e:"🔴",d:"Tournois réguliers, classé",img:"https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=400&h=500&fit=crop"},
+];
+
+/* ═══ PLAY STYLES ═══ */
+const STYLES=[
+  {id:"controle",label:"Contrôle",e:"🎯",d:"Placement, patience, lobs, bandeja",img:"https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=400&h=500&fit=crop"},
+  {id:"polyvalent",label:"Polyvalent",e:"⚖️",d:"Je m'adapte à toutes les situations",img:"https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=400&h=500&fit=crop"},
+  {id:"puissance",label:"Puissance",e:"💥",d:"Smash, remates, jeu agressif",img:"https://images.unsplash.com/photo-1612534847738-b3f3c5e5e5e1?w=400&h=500&fit=crop"},
+];
+
+/* ═══ POSITION ═══ */
+const POSITIONS=[
+  {id:"droite",label:"Côté droit",e:"👉",d:"Revés, défense, construction du point",img:"https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=400&h=500&fit=crop&crop=left"},
+  {id:"gauche",label:"Côté gauche",e:"👈",d:"Attaque, volée, smash",img:"https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=400&h=500&fit=crop&crop=right"},
+  {id:"les-deux",label:"Les deux",e:"🔄",d:"Je joue des deux côtés",img:"https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=400&h=500&fit=crop&crop=center"},
+];
+
+/* ═══ FREQUENCY ═══ */
+const FREQS=[
+  {id:"occasionnel",label:"Occasionnel",e:"1×",d:"1-2 fois par mois",img:"https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=400&h=500&fit=crop&crop=bottom"},
+  {id:"regulier",label:"Régulier",e:"2×",d:"1-2 fois par semaine",img:"https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=400&h=500&fit=crop&crop=center"},
+  {id:"intensif",label:"Intensif",e:"4×",d:"3+ fois par semaine",img:"https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=400&h=500&fit=crop&crop=top"},
+];
+
+/* ═══ INJURY PROFILES ═══ */
+const INJURIES=[
+  {id:"aucune",label:"Aucune",e:"✅",d:"Pas de douleurs particulières",img:"https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=400&h=500&fit=crop&crop=entropy"},
+  {id:"coude",label:"Coude / Tennis elbow",e:"💪",d:"Douleurs au coude ou avant-bras",img:"https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=400&h=500&fit=crop&crop=top"},
+  {id:"epaule",label:"Épaule / Poignet",e:"🦾",d:"Fragilité articulaire haut du corps",img:"https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=400&h=500&fit=crop&crop=entropy"},
+  {id:"genoux",label:"Genoux / Chevilles",e:"🦵",d:"Fragilité membres inférieurs",img:"https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=400&h=500&fit=crop&crop=left"},
+];
+
+/* ═══ GENDER ═══ */
+const GENS=[
+  {id:"h",label:"Homme",e:"♂",img:"https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=400&h=500&fit=crop"},
+  {id:"f",label:"Femme",e:"♀",img:"https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=400&h=500&fit=crop"},
+];
+
+/* ═══ CATALOG — REAL DATA from esprit-padel-shop.com ═══
+   scoring vectors: [controle, puissance, maniabilite, tolerance, spin, confort, durabilite] */
+const P={
+  raquette:[
+    /* === DÉBUTANT / INTERMÉDIAIRE === */
+    {id:"head-flash-pro",brand:"Head",name:"Flash Pro 2.0",price:79.90,
+      forme:"Goutte",poids:"360-370g",mousse:"Power Foam",surface:"Fibre de verre + Innegra",texture:"Lisse",balance:"Moyenne",
+      sc:[7,5,9,9,4,9,7],level:"debutant",style:"polyvalent",
+      img:"https://esprit-padel-shop.com/cdn/shop/files/Raquette-De-Padel-Head-Flash-2.0.jpg?v=1698399842&width=1920",
+      url:"https://esprit-padel-shop.com/products/raquette-de-padel-head-flash-pro-2-0",
+      why:"Légèreté et polyvalence. Cadre Innegra + carbone pour absorber les vibrations. Mousse Power Foam = sortie de balle facile, parfaite pour progresser.",
+      tech:"Innegra + Carbon composite. Power Foam core. Profil 38mm. Sweet spot généreux pour les débutants."},
+    {id:"tecnifibre-wall-master",brand:"Tecnifibre",name:"Wall Master 370",price:109.90,
+      forme:"Ronde",poids:"370g",mousse:"EVA Soft",surface:"Carbone Shield XTC",texture:"3D Spin Skin",balance:"Basse",
+      sc:[9,3,8,9,7,9,8],level:"intermediaire",style:"controle",
+      img:"https://esprit-padel-shop.com/cdn/shop/files/raquette-de-padel-tecnifibre-wall-master-2023-370-face.jpg?v=1686319355",
+      url:"https://esprit-padel-shop.com/products/raquette-de-padel-tecnifibre-wall-master-365-2023",
+      why:"Forme ronde + balance basse = contrôle absolu. La texture Spin Skin 3D brevetée Tecnifibre accroche la balle pour des effets redoutables.",
+      tech:"Carbone Shield XTC. Spin Skin 3D texture brevetée. EVA Soft core. Balance basse pour la maniabilité."},
+    {id:"head-speed-pro",brand:"Head",name:"Speed Pro",price:119.90,
+      forme:"Goutte",poids:"355-365g",mousse:"Power Foam",surface:"Graphene 360+ Carbone",texture:"Lisse",balance:"Moyenne",
+      sc:[7,6,8,8,5,8,8],level:"intermediaire",style:"polyvalent",
+      img:"https://esprit-padel-shop.com/cdn/shop/files/raquette-de-padel-head-speed-pro-face.png?v=1744011375",
+      url:"https://esprit-padel-shop.com/products/raquette-de-padel-head-speed-pro",
+      why:"Graphene 360+ = transfert d'énergie optimal et stabilité au cadre. Équilibre centré, polyvalente. Idéale pour le joueur qui monte en niveau.",
+      tech:"Graphene 360+ au bridge et cadre. Power Foam core. Profil 38mm. Équilibre centré."},
+
+    /* === INTERMÉDIAIRE / AVANCÉ === */
+    {id:"bullpadel-vertex-04-comfort",brand:"Bullpadel",name:"Vertex 04 Comfort",price:129.90,
+      forme:"Diamant",poids:"360-375g",mousse:"MultiEVA dual density",surface:"CarbonTube + Fibre",texture:"Rugueuse Topspin",balance:"Haute",
+      sc:[5,7,6,6,7,7,8],level:"intermediaire",style:"puissance",
+      img:"https://esprit-padel-shop.com/cdn/shop/files/raquette-de-padel-bullpadel-vertex-04-comfort-2024-face.jpg?v=1695716005&width=1920",
+      url:"https://esprit-padel-shop.com/products/raquette-de-padel-bullpadel-vertex-comfort-2024",
+      why:"Forme diamant + MultiEVA double densité = puissance avec confort. Texture Topspin rugueuse pour les effets. Le meilleur rapport puissance/confort.",
+      tech:"MultiEVA dual density. CarbonTube + fibre hybride. Texture Topspin rugueuse. Curv:Aktiv absorption."},
+    {id:"bullpadel-vertex-02-hybrid",brand:"Bullpadel",name:"Vertex 02 Hybrid Carbon",price:149.90,
+      forme:"Goutte",poids:"360-370g",mousse:"MultiEVA compact",surface:"XTend Carbone 3K",texture:"Rugueuse papier de verre",balance:"Basse",
+      sc:[8,5,7,6,7,6,9],level:"avance",style:"polyvalent",
+      img:"https://esprit-padel-shop.com/cdn/shop/files/raquette-de-padel-bullpadel-vertex-02-x-hybrid-carbon-Face.jpg?v=1726489870",
+      url:"https://esprit-padel-shop.com/products/raquette-de-padel-bullpadel-vertex-02-hybrid-carbon",
+      why:"Carbone 3K + MultiEVA compact = toucher ferme et précis. Balance basse pour un contrôle chirurgical côté droit. Texture abrasive pour le spin.",
+      tech:"XTend Carbone 3K. MultiEVA compact external density. Texture papier de verre. Balance basse."},
+    {id:"bullpadel-vertex-04-hybrid",brand:"Bullpadel",name:"Vertex 04 Hybrid 2025",price:199.90,
+      forme:"Goutte",poids:"360-375g",mousse:"MultiEVA dual density",surface:"Xtend Carbon 12K",texture:"Rugueuse Topspin",balance:"Moyenne",
+      sc:[7,7,6,6,8,6,9],level:"avance",style:"polyvalent",
+      img:"https://esprit-padel-shop.com/cdn/shop/files/Raquette-de-padel-Bullpadel-Vertex-04-Hybrid-2025-Face.png?v=1725539126&width=1920",
+      url:"https://esprit-padel-shop.com/products/raquette-de-padel-bullpadel-vertex-04-hybrid-2025",
+      why:"Carbone 12K + système CustomWeight ajustable. MultiEVA double densité pour une puissance explosive avec précision. La goutte d'eau de référence.",
+      tech:"Xtend Carbon 12K. CustomWeight system. MultiEVA dual-density. Topspin rugueuse surface."},
+    {id:"wilson-endure-ls",brand:"Wilson",name:"Endure LS V1 2026",price:219.90,
+      forme:"Ronde",poids:"355g (±10g)",mousse:"Control Foam",surface:"Carbon Flex",texture:"Rugueuse Exact Touch",balance:"Basse",
+      sc:[9,4,8,7,6,7,8],level:"avance",style:"controle",
+      img:"https://esprit-padel-shop.com/cdn/shop/files/Raquette-de-padel-Wilson-Endure-LS-V1-2026-Face.png?v=1768811076",
+      url:"https://esprit-padel-shop.com/products/raquette-de-padel-wilson-endure-ls-v1-2026",
+      why:"Forme ronde + Control Foam = le contrôle absolu version Wilson. Carbon Flex pour un toucher progressif. La raquette défensive par excellence.",
+      tech:"Control Foam core. Carbon Flex (carbone + fibre de verre). Exact Touch texture. Balance basse."},
+
+    /* === AVANCÉ / EXPERT === */
+    {id:"nox-at10-genius",brand:"Nox",name:"AT10 Genius 18K Tapia",price:219.90,
+      forme:"Goutte",poids:"365-375g",mousse:"MLD Black EVA multicouches",surface:"Carbone 18K Alum",texture:"Rugueuse Exclusive Spin",balance:"Moyenne-Haute",
+      sc:[6,8,5,5,8,5,9],level:"expert",style:"polyvalent",
+      img:"https://esprit-padel-shop.com/cdn/shop/files/Raquette-de-padel-Nox-AT10-Genius-18K-by-Agustin-Tapia-2025-Face.png?v=1727169299&width=1920",
+      url:"https://esprit-padel-shop.com/products/raquette-de-padel-nox-at10-genius-18k-by-agustin-tapia-2025",
+      why:"La raquette d'Agustín Tapia — le joueur le plus spectaculaire du circuit. Carbone 18K + mousse MLD multicouches = puissance explosive sans sacrifier le toucher.",
+      tech:"MLD Black EVA multi-couches (3 densités). Carbone 18K Alum. Exclusive Spin rough surface. AVS anti-vibrations."},
+    {id:"adidas-metalbone-34",brand:"Adidas",name:"Metalbone 3.4 2025",price:229.90,
+      forme:"Diamant",poids:"360-375g",mousse:"EVA Soft Performance",surface:"Carbon Alum 16K",texture:"Rugueuse Spin Blade",balance:"Haute",
+      sc:[4,10,4,3,8,3,10],level:"avance",style:"puissance",
+      img:"https://esprit-padel-shop.com/cdn/shop/files/Raquette-de-padel-Adidas-Metalbone-3.4-2025-Face.png?v=1732271384&width=1920",
+      url:"https://esprit-padel-shop.com/products/raquette-de-padel-adidas-metalbone-3-4-2025",
+      why:"La Metalbone — l'arme d'Ale Galán. Diamant + Carbone 16K = puissance brute. EVA Soft Performance adoucit l'impact. Pour les attaquants assumés.",
+      tech:"Carbon Aluminized 16K face. EVA Soft Performance core. Spin Blade texture. Smart Holes aération."},
+    {id:"wilson-endure-v1",brand:"Wilson",name:"Endure V1 2026",price:269.90,
+      forme:"Ronde",poids:"365-375g",mousse:"Control Foam+",surface:"UD Carbon",texture:"3D Touch Points",balance:"Basse",
+      sc:[9,5,6,5,8,5,9],level:"expert",style:"controle",
+      img:"https://esprit-padel-shop.com/cdn/shop/files/raquette-de-padel-wilson-endure-v1-2026-face.png?v=1768812035&width=1920",
+      url:"https://esprit-padel-shop.com/products/raquette-de-padel-wilson-endure-v1-2026",
+      why:"UD Carbon + Control Foam+ = toucher premium avec précision chirurgicale. Texture 3D Touch Points pour un spin redoutable. Pour le jeu positionnel expert.",
+      tech:"UD Carbon unidirectional. Control Foam+ enhanced core. Touch Points 3D dots texture. Balance basse."},
+    {id:"wilson-endure-pro",brand:"Wilson",name:"Endure Pro V1 2026",price:319.90,
+      forme:"Ronde",poids:"360-375g",mousse:"Control Foam",surface:"Carbon 3K",texture:"Rugueuse Exact Touch",balance:"Basse",
+      sc:[10,4,5,4,7,4,10],level:"expert",style:"controle",
+      img:"https://esprit-padel-shop.com/cdn/shop/files/Raquette-de-padel-Wilson-Endure-Pro-V1-2026-Face.png?v=1768812970&width=1920",
+      url:"https://esprit-padel-shop.com/products/raquette-de-padel-wilson-endure-pro-v1-2026",
+      why:"Signature Momo González. Carbone 3K + Exact Touch = le contrôle ultime. Shock Shield Grip anti-vibrations. Pour les stratèges du padel.",
+      tech:"Carbon 3K face. Control Foam core. Exact Touch sanded surface. Shock Shield Grip technology."},
+  ],
+  chaussure:[
+    {id:"babolat-jet-ritma",brand:"Babolat",name:"Jet Ritma Gris/Rose",price:62.90,
+      semelle:"Omni",amorti:"KPRS-X EVA",genre:"F",
+      sc:[7,4,8,9,0,10,7],
+      img:"https://esprit-padel-shop.com/cdn/shop/files/Chaussures-babolat-ritma-femmes-gris-rose-2022-2.png?v=1739974586",
+      url:"https://esprit-padel-shop.com/products/chaussures-de-padel-femme-babolat-jet-ritma-gris-rose",
+      why:"Semelle Michelin + technologie KPRS-X = confort et grip premium. Flexibilité 360° pour les déplacements latéraux. Le meilleur rapport qualité-prix femme.",
+      tech:"Semelle Michelin. KPRS-X EVA heel insert. Flexibilité 360°. Tige respirante."},
+    {id:"babolat-jet-viva",brand:"Babolat",name:"Jet Viva Blanc",price:89.90,
+      semelle:"Omni",amorti:"KPRS-X + Ortholite",genre:"H",
+      sc:[6,5,8,8,0,9,8],
+      img:"https://esprit-padel-shop.com/cdn/shop/files/Chaussures-de-padel-Homme-Babolat-Jet-Viva-Blanc-Cote.png?v=1727939926",
+      url:"https://esprit-padel-shop.com/products/chaussures-de-padel-homme-babolat-jet-viva-blanc",
+      why:"Semelle Michelin + Ortholite memory foam = amorti premium toute la journée. Grip exceptionnel sur tous types de surface.",
+      tech:"Semelle Michelin omni. KPRS-X + Ortholite memory foam insole. Support latéral renforcé."},
+    {id:"nox-at10-lux",brand:"Nox",name:"AT10 Lux Noir/Rouge",price:104.90,
+      semelle:"Herringbone",amorti:"Ortholite + AGG",genre:"H",
+      sc:[5,7,7,7,0,8,8],
+      img:"https://esprit-padel-shop.com/cdn/shop/products/nox-chaussures-at10-lux-cote.jpg?v=1668503817",
+      url:"https://esprit-padel-shop.com/products/chaussures-de-padel-homme-nox-at10-lux-noir-rouge",
+      why:"Signature Agustín Tapia. Ortholite + technologie AGG = amorti + dynamisme. Renforts latéraux pour les changements de direction explosifs.",
+      tech:"Ortholite insole. AGG technology. Herringbone outsole. Renforts latéraux TPU."},
+    {id:"wilson-bela-tour",brand:"Wilson",name:"Bela Tour Blanc",price:104.90,
+      semelle:"Hybrid",amorti:"Memory Foam + Anti-torsion",genre:"H",
+      sc:[6,6,8,8,0,7,8],
+      img:"https://esprit-padel-shop.com/cdn/shop/files/wilson-chaussures-de-padel-bela-tour-cote2.jpg?v=1701685674",
+      url:"https://esprit-padel-shop.com/products/chaussures-de-padel-wilson-bela-tour",
+      why:"Signature Fernando Belasteguin — le GOAT du padel. Mousse mémoire + anti-torsion = stabilité pour le jeu de position.",
+      tech:"Memory foam insole. Anti-torsion system. Hybrid outsole. Signature Bela design."},
+    {id:"asics-gel-resolution",brand:"Asics",name:"Gel-Resolution X Padel",price:115.90,
+      semelle:"Herringbone",amorti:"GEL avant-pied + double densité",genre:"H",
+      sc:[6,5,7,7,0,10,9],
+      img:"https://esprit-padel-shop.com/cdn/shop/files/Chaussures-de-padel-Homme-Asics-Gel-Resolution-X-Bleu-Cote.png?v=1737038453&width=1920",
+      url:"https://esprit-padel-shop.com/products/chaussures-de-padel-homme-asics-gel-resolution-x-padel",
+      why:"Double technologie GEL™ avant-pied + semelle double densité = amorti premium. Dynalacing pour un maintien personnalisé. La Rolls du confort padel.",
+      tech:"GEL™ Technology forefoot. Dual-density midsole. Dynalacing system. Aharplus outsole."},
+  ],
+  accessoire:[
+    {id:"eps-surgrip",brand:"Esprit Padel Shop",name:"Pro Padel Blanc x3",price:5.90,type:"Surgrip",
+      img:"https://esprit-padel-shop.com/cdn/shop/files/Surgrips-Esprit-Padel-Shop-x3.png?v=1735901005&width=1920",
+      url:"https://esprit-padel-shop.com/products/surgrips-esprit-padel-shop-pro-padel-x3",
+      why:"Pack de 3 surgrips. Finesse et confort, grip accru même avec transpiration. Changez toutes les 10-15 sessions pour un toucher optimal.",
+      tech:"Surgrip polyuréthane. Épaisseur fine 0.6mm. Absorption transpiration."},
+    {id:"bullpadel-surgrip",brand:"Bullpadel",name:"Confort GB1201 Noir x3",price:7.90,type:"Surgrip",
+      img:"https://esprit-padel-shop.com/cdn/shop/products/surgrip-bullpadel-gb-1201-005.jpg?v=1740233425&width=1920",
+      url:"https://esprit-padel-shop.com/products/surgrip-bullpadel-comfort-gb1201-x3",
+      why:"Micro-perforations pour évaporation rapide. Léger et ultra-absorbant. Confort premium signé Bullpadel.",
+      tech:"Micro-perforations. PU absorbant. Pack de 3."},
+    {id:"head-padel-pro-balls",brand:"Head",name:"Padel Pro+ Tripack",price:17.90,type:"Balles",
+      img:"https://esprit-padel-shop.com/cdn/shop/files/Tripack-de-3-balles-de-padel-Head-Padel-Pro.png?v=1760693747&width=1920",
+      url:"https://esprit-padel-shop.com/products/tripack-de-3-balles-head-padel-pro",
+      why:"Tripack = 9 balles. Caoutchouc résistant, rebond constant. La balle de référence pour l'entraînement et la compétition.",
+      tech:"Premium rubber core. Feutre longue durée. Pression calibrée. 3 tubes de 3 balles."},
+    {id:"bullpadel-balls",brand:"Bullpadel",name:"Next Pro Tripack",price:18.90,type:"Balles",
+      img:"https://esprit-padel-shop.com/cdn/shop/files/Tripack-de-3-balles-Bullpadel-Next-pro.png?v=1770213220",
+      url:"https://esprit-padel-shop.com/products/tripack-de-3-balles-bullpadel-next-pro",
+      why:"Balle officielle de la fédération internationale. Feutre naturel, rebond homologué. La référence compétition.",
+      tech:"Feutre naturel. Pression homologuée FIP. 3 tubes de 3 balles."},
+    {id:"nox-sac-xl",brand:"Nox",name:"AT10 Competition XL 2024",price:69.90,type:"Sac",
+      img:"https://esprit-padel-shop.com/cdn/shop/files/Sac-de-padel-No-AT10-Competition-XL-2024-3quart.png?v=1725357009&width=1920",
+      url:"https://esprit-padel-shop.com/products/sac-de-padel-nox-at10-competition-xl-2024",
+      why:"Compartiment thermique pour 3 raquettes + poche chaussures ventilée. 5 raquettes max. Le sac signature Tapia.",
+      tech:"Compartiment isotherme. Poche chaussures ventilée. Capacité 5 raquettes. Sangle ergonomique."},
+    {id:"head-housse",brand:"Head",name:"CCT Racket Cover Noir",price:8.90,type:"Housse",
+      img:"https://esprit-padel-shop.com/cdn/shop/files/head-housse-raquette-padel-cct-full-size.jpg?v=1696236170&width=1920",
+      url:"https://esprit-padel-shop.com/products/housse-de-raquette-head-coverbag",
+      why:"Protection individuelle pour votre raquette. Poche frontale accessoires. Bandoulière. Indispensable pour le transport quotidien.",
+      tech:"Poche frontale pour accessoires. Bandoulière ajustable. Polyester résistant."},
+  ],
+};
+
+/* ═══ MARKET PREMIUM MULTIPLIERS ═══ */
+const MARKET_MULT={raquette:1.3,chaussure:1.25,accessoire:1.4};
+
+/* ═══ SOCIAL PROOF ═══ */
+function socialProof(id){
+  let h=0;for(let i=0;i<id.length;i++){h=((h<<5)-h)+id.charCodeAt(i);h|=0;}
+  const n=Math.abs(h%25)+72;
+  const labels=["des joueurs","des compétiteurs","des coachs","des clubs","des joueurs réguliers"];
+  return{pct:n,label:labels[Math.abs(h>>8)%labels.length]};
+}
+
+/* ═══ SCORING ENGINE ═══
+   Product vectors: [controle, puissance, maniabilite, tolerance, spin, confort, durabilite]
+
+   Level profiles — what matters most at each level
+   Style profiles — shifted by play style
+   Position modifiers — droite needs control, gauche needs power
+   Frequency modifiers — intensif needs durability
+   Injury modifiers — shifts toward comfort and lightweight
+*/
+
+const LEVEL_PROFILES={
+  debutant:     [9,2,8,10,3,10,5],
+  intermediaire:[7,5,7,7,6,7,7],
+  avance:       [5,8,5,4,8,5,9],
+  expert:       [4,9,4,3,9,4,10],
+};
+const STYLE_MOD={
+  controle:  [4,-2,2,2,1,2,0],
+  polyvalent:[1,1,1,1,1,1,1],
+  puissance: [-2,5,-1,-2,2,-2,1],
+};
+const POS_MOD={
+  droite:   [3,-1,1,2,1,1,0],
+  gauche:   [-1,3,0,-1,1,-1,0],
+  "les-deux":[1,1,1,1,1,1,0],
+};
+const FREQ_MOD={
+  occasionnel:[0,0,0,1,0,1,-2],
+  regulier:   [0,0,0,0,0,0,1],
+  intensif:   [0,0,0,-1,0,-1,4],
+};
+const INJURY_MOD={
+  aucune: [0,0,0,0,0,0,0],
+  coude:  [2,-3,2,3,-1,5,0],
+  epaule: [2,-2,3,2,0,4,0],
+  genoux: [0,0,0,0,0,2,0], /* mainly affects shoe choice */
+};
+
+const LVL_PRICE={debutant:{max:180},intermediaire:{max:300},avance:{max:450},expert:{max:999}};
+
+function buildProfile(level,style,position,freq,injury){
+  const l=LEVEL_PROFILES[level]||LEVEL_PROFILES.intermediaire;
+  const s=STYLE_MOD[style]||STYLE_MOD.polyvalent;
+  const p=POS_MOD[position]||POS_MOD["les-deux"];
+  const f=FREQ_MOD[freq]||FREQ_MOD.regulier;
+  const inj=INJURY_MOD[injury]||INJURY_MOD.aucune;
+  return l.map((v,i)=>v+(s[i]||0)+(p[i]||0)+(f[i]||0)+(inj[i]||0));
+}
+
+function scoreProduct(product,profile,level){
+  const sc=product.sc;
+  let score=0;
+  for(let i=0;i<7;i++){
+    if(sc[i]===0) continue; /* skip irrelevant axes (e.g. spin for shoes) */
+    const diff=Math.abs(profile[i]-sc[i]);
+    score+=(10-diff)*Math.max(0.5,profile[i]/5);
+  }
+  /* Level alignment bonus */
+  if(product.level){
+    const lvlOrder=["debutant","intermediaire","avance","expert"];
+    const pLvl=lvlOrder.indexOf(product.level);
+    const uLvl=lvlOrder.indexOf(level);
+    const dist=Math.abs(pLvl-uLvl);
+    if(dist===0) score+=8;
+    else if(dist===1) score+=3;
+    else score-=5;
+  }
+  return score;
+}
+
+function getRecs(level,style,position,freq,injury,gen,budgetMax){
+  const g=gen||"h";
+  const bMax=budgetMax||LVL_PRICE[level]?.max||400;
+  const profile=buildProfile(level,style,position,freq,injury);
+
+  /* Raquette recommendation */
+  const raquettes=P.raquette
+    .map(p=>({...p,_score:scoreProduct(p,profile,level)}))
+    .sort((a,b)=>b._score-a._score);
+  const raqInBudget=raquettes.filter(p=>p.price<=bMax);
+  const raqPick=raqInBudget.length>0?raqInBudget[0]:raquettes[0];
+
+  /* Chaussure recommendation */
+  const chaussures=P.chaussure
+    .map(p=>({...p,_score:scoreProduct(p,profile,level)}))
+    .sort((a,b)=>b._score-a._score);
+  const chPick=chaussures[0];
+
+  /* Smart accessory picks based on profile */
+  const accPicks=[];
+  /* Always recommend balls */
+  accPicks.push(P.accessoire.find(a=>a.type==="Balles"));
+  /* Always recommend surgrip */
+  accPicks.push(P.accessoire.find(a=>a.type==="Surgrip"));
+  /* Regulier+ → sac */
+  if(["regulier","intensif"].includes(freq)){
+    accPicks.push(P.accessoire.find(a=>a.type==="Sac"));
+  }
+  /* Occasionnel → housse */
+  if(freq==="occasionnel"){
+    accPicks.push(P.accessoire.find(a=>a.type==="Housse"));
+  }
+
+  const categories=[
+    {cat:"raquette",label:"RAQUETTE",name:"Votre arme",pick:raqPick},
+    {cat:"chaussure",label:"CHAUSSURES",name:"Vos appuis",pick:chPick},
+  ];
+
+  const results=categories.map(c=>({
+    ...c.pick,
+    catLabel:c.label,
+    catName:c.name,
+    cat:c.cat,
+    _matchPct:Math.round(Math.min(100,c.pick._score*1.2)),
+  }));
+
+  return{main:results,accessories:accPicks.filter(Boolean)};
+}
+
+/* ═══ CONTEXTUAL WHY ═══ */
+function getContextualWhy(product,level,style,position,injury){
+  const lvlMap={debutant:"en tant que débutant",intermediaire:"à votre niveau intermédiaire",avance:"pour votre niveau avancé",expert:"pour votre niveau compétition"};
+  const styleMap={controle:"axé sur le contrôle",polyvalent:"polyvalent",puissance:"orienté puissance"};
+  const posMap={droite:"jouant côté droit",gauche:"jouant côté gauche","les-deux":"jouant des deux côtés"};
+  const ctx=`${lvlMap[level]||""}, avec un jeu ${styleMap[style]||"polyvalent"}, ${posMap[position]||""}`;
+  let extra="";
+  if(injury==="coude") extra=" Attention particulière au confort et à l'absorption des vibrations pour protéger votre coude.";
+  if(injury==="epaule") extra=" Raquette légère et maniable pour ménager votre épaule.";
+  return `${ctx}.${extra} ${product.why}`;
+}
+
+/* ═══ NUDGE MESSAGES ═══ */
+const ND={
+  h:["Le padel est le sport qui progresse le plus vite en France : +400% de pratiquants en 5 ans.","Conseil pro : changez votre grip tous les 10-15 matchs pour garder un toucher optimal.","Les balles de padel perdent 30% de leur pression après 2-3 matchs. Investissez dans des balles neuves régulièrement.","Astuce : une raquette ronde avec EVA souple est le meilleur investissement pour progresser rapidement."],
+  t:["Livraison Express 24-48h. Retours gratuits 30 jours.","Esprit Padel Shop : #1 en France, 600+ raquettes, conseil expert."],
+  p:["Investir dans la bonne raquette évite les blessures : une raquette inadaptée est la cause #1 du tennis elbow au padel.","Les joueurs qui changent de raquette chaque saison progressent en moyenne 35% plus vite. Votre prochain palier vous attend.","87% des joueurs de padel sous-estiment l'impact de leurs chaussures. Un bon grip = 15% de points en plus sur les déplacements latéraux."],
+};
+
+/* ═══ APP ═══ */
+function App(){
+  const[ph,setPh]=useState("hero");
+  const[catFilter,setCatFilter]=useState("raquette");
+  const[catSort,setCatSort]=useState("score");
+  const[gen,setGen]=useState(null);
+  const[level,setLevel]=useState(null);
+  const[style,setStyle]=useState(null);
+  const[position,setPosition]=useState(null);
+  const[freq,setFreq]=useState(null);
+  const[injury,setInjury]=useState(null);
+  const[res,setRes]=useState(null);
+  const[exC,setExC]=useState(null);
+  const[sA,setSA]=useState(null);
+  const[ndg,setNdg]=useState(null);
+  const[ns,setNs]=useState({});
+  const[budgetMax,setBudgetMax]=useState(400);
+  const li=useRef(Date.now());
+  const w=typeof window!=="undefined"?window.innerWidth:400;
+
+  useEffect(()=>{if(ph!=="res")return;const t=setInterval(()=>{const d=Date.now()-li.current;if(d>5000&&!ns.h){sN("h");setNs(p=>({...p,h:1}));}else if(d>14000&&!ns.t){sN("t");setNs(p=>({...p,t:1}));}},3000);return()=>clearInterval(t);},[ph,ns]);
+
+  const tch=()=>{li.current=Date.now();};
+  const sN=k=>{const arr=ND[k];if(!arr)return;setNdg(arr[Math.floor(Math.random()*arr.length)]);setTimeout(()=>setNdg(null),6000);};
+
+  const doInjury=(inj)=>{
+    setInjury(inj);setPh("an");
+    setTimeout(()=>{
+      const r=getRecs(level,style,position,freq,inj,gen,budgetMax);
+      setRes(r);setPh("res");
+    },2200);
+  };
+
+  const swap=(idx,np)=>{
+    tch();
+    setRes(prev=>{
+      const newMain=[...prev.main];
+      newMain[idx]={...np,catLabel:newMain[idx].catLabel,catName:newMain[idx].catName,cat:newMain[idx].cat,_matchPct:Math.round(Math.min(100,np._score*1.2))};
+      return{...prev,main:newMain};
+    });
+    setSA(null);
+  };
+
+  const reset=()=>{setPh("hero");setGen(null);setLevel(null);setStyle(null);setPosition(null);setFreq(null);setInjury(null);setRes(null);setExC(null);setSA(null);setNdg(null);setNs({});setBudgetMax(400);window.scrollTo(0,0);};
+
+  const sn={gender:1,level:2,style:3,position:4,frequency:5,injury:6}[ph]||0;
+  const totalSteps=6;
+
+  const Btn=({label,emoji,sub,onClick,wide})=>{const[h,setH]=useState(false);return<button onClick={onClick} onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)} style={{background:h?"rgba(255,255,255,0.06)":"rgba(255,255,255,0.015)",border:h?"1px solid rgba(255,255,255,0.2)":"1px solid rgba(255,255,255,0.05)",padding:wide?"16px 18px":"20px 14px",cursor:"pointer",display:"flex",flexDirection:wide?"row":"column",alignItems:wide?"center":"center",gap:wide?12:6,transition:"all 0.25s",position:"relative",overflow:"hidden",width:"100%"}}><div style={{position:"absolute",bottom:0,left:0,height:2,background:T.acc2,width:h?"100%":"0%",transition:"width 0.35s"}}/>{emoji&&<span style={{fontSize:wide?20:24}}>{emoji}</span>}<div style={{textAlign:wide?"left":"center"}}><div style={{fontFamily:T.bf,fontSize:13,fontWeight:500,color:T.white}}>{label}</div>{sub&&<div style={{fontFamily:T.bf,fontSize:10,fontWeight:300,color:T.grey,marginTop:2}}>{sub}</div>}</div></button>;};
+
+  /* Sliders */
+  const Sliders=()=><div style={{display:"flex",flexDirection:"column",gap:14,marginBottom:16,padding:"14px",background:"rgba(255,255,255,0.015)",border:"1px solid rgba(255,255,255,0.04)"}}>
+    <div style={{fontFamily:T.bf,fontSize:8,letterSpacing:"2.5px",textTransform:"uppercase",color:T.acc2}}>Ajuster le budget</div>
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+        <span style={{fontFamily:T.bf,fontSize:10,color:T.grey}}>Budget max raquette</span>
+        <span style={{fontFamily:T.bf,fontSize:11,color:T.white,fontWeight:600}}>{budgetMax}€</span>
+      </div>
+      <input type="range" min="80" max="500" step="10" value={budgetMax} onChange={e=>{const v=parseInt(e.target.value);setBudgetMax(v);if(res){const r=getRecs(level,style,position,freq,injury,gen,v);setRes(r);}}}/>
+    </div>
+  </div>;
+
+  const total=res?res.main.reduce((s,p)=>s+p.price,0)+res.accessories.reduce((s,a)=>s+a.price,0):0;
+
+  return(
+    <div style={{minHeight:"100vh",background:T.black,color:T.white,fontFamily:T.bf,maxWidth:900,margin:"0 auto"}}>
+
+      {/* NUDGE */}
+      {ndg&&<div style={{position:"fixed",bottom:16,left:12,right:12,maxWidth:876,margin:"0 auto",zIndex:999,background:"rgba(232,168,56,0.1)",backdropFilter:"blur(16px)",border:"1px solid rgba(232,168,56,0.2)",padding:"12px 16px",display:"flex",alignItems:"center",gap:10,animation:"nudgeIn 0.4s",borderRadius:4}}>
+        <span style={{fontSize:16,flexShrink:0}}>🎾</span>
+        <p style={{fontFamily:T.bf,fontSize:12,fontWeight:300,color:T.light,lineHeight:1.5,flex:1}}>{ndg}</p>
+        <button onClick={()=>setNdg(null)} style={{background:"none",border:"none",color:T.grey,fontSize:18,cursor:"pointer",padding:0}}>×</button>
+      </div>}
+
+      {/* HEADER */}
+      <header style={{position:"fixed",top:0,left:0,right:0,zIndex:50,display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px clamp(16px,4vw,32px)",background:ph==="hero"?"transparent":"rgba(10,10,10,0.94)",backdropFilter:ph!=="hero"?"blur(16px)":"none",borderBottom:ph!=="hero"?"1px solid rgba(255,255,255,0.05)":"none",transition:"all 0.4s"}}>
+        <div onClick={reset} style={{cursor:"pointer"}}><div style={{fontFamily:T.bf,fontSize:"clamp(14px,2.5vw,18px)",fontWeight:700,letterSpacing:"3px",color:T.acc2}}>ESPRIT PADEL</div><div style={{fontFamily:T.bf,fontSize:7,letterSpacing:"2.5px",color:T.grey,textTransform:"uppercase"}}>Shop — Configurateur IA</div></div>
+        {!["hero","an"].includes(ph)&&<button onClick={reset} style={{background:"none",border:"1px solid rgba(255,255,255,0.1)",padding:"5px 14px",color:T.grey,fontSize:9,fontFamily:T.bf,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer"}}>{ph==="catalogue"?"Accueil":"Recommencer"}</button>}
+      </header>
+
+      {/* HERO */}
+      {ph==="hero"&&<div style={{minHeight:"100vh",display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"0 clamp(16px,4vw,40px) 48px",position:"relative",background:"linear-gradient(135deg,#1a1200 0%,#0a0a0a 40%,#0a1520 100%)"}}>
+        <div style={{position:"absolute",inset:0,backgroundImage:"url(https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=1500&h=1000&fit=crop)",backgroundSize:"cover",backgroundPosition:"center 40%",filter:"brightness(0.25) contrast(1.1)"}}/>
+        <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(10,10,10,1) 0%,rgba(10,10,10,0.4) 50%,rgba(10,10,10,0.1) 100%)"}}/>
+        <div style={{position:"relative",zIndex:2,animation:"fadeUp 0.8s ease 0.2s both",maxWidth:560}}>
+          <div style={{fontFamily:T.bf,fontSize:"clamp(8px,1.5vw,10px)",letterSpacing:"5px",textTransform:"uppercase",color:T.acc2,marginBottom:14}}>Configurateur intelligent</div>
+          <h1 style={{fontFamily:T.df,fontSize:"clamp(30px,6vw,56px)",fontWeight:300,lineHeight:1.05,marginBottom:16,fontStyle:"italic"}}>Votre équipement padel,<br/><span style={{fontWeight:700,fontStyle:"normal"}}>pensé pour votre jeu</span></h1>
+          <p style={{fontFamily:T.bf,fontSize:"clamp(12px,1.8vw,14px)",fontWeight:300,color:T.grey,lineHeight:1.7,maxWidth:420,marginBottom:28}}>6 questions, 30 secondes. Notre moteur analyse votre profil — niveau, style, position, fréquence, sensibilités — et compose votre setup idéal parmi 600+ références.</p>
+          <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+            <button onClick={()=>setPh("gender")} style={{background:T.acc2,color:T.black,border:"none",padding:"clamp(12px,2vw,16px) clamp(30px,5vw,48px)",fontFamily:T.bf,fontSize:"clamp(11px,1.5vw,13px)",fontWeight:600,letterSpacing:"3px",textTransform:"uppercase",cursor:"pointer",transition:"background 0.3s"}} onMouseEnter={e=>e.target.style.background=T.acc} onMouseLeave={e=>e.target.style.background=T.acc2}>Trouvez mon setup</button>
+            <button onClick={()=>setPh("catalogue")} style={{background:"transparent",color:T.white,border:"1px solid rgba(255,255,255,0.2)",padding:"clamp(12px,2vw,16px) clamp(24px,4vw,36px)",fontFamily:T.bf,fontSize:"clamp(10px,1.3vw,12px)",fontWeight:400,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer",transition:"all 0.3s"}} onMouseEnter={e=>{e.target.style.borderColor="rgba(232,168,56,0.5)";e.target.style.color=T.acc2;}} onMouseLeave={e=>{e.target.style.borderColor="rgba(255,255,255,0.2)";e.target.style.color=T.white;}}>Explorer le catalogue</button>
+          </div>
+          <div style={{marginTop:32,display:"flex",gap:"clamp(16px,3vw,28px)",flexWrap:"wrap",animation:"fadeUp 0.8s ease 0.6s both"}}>{[{n:"600+",l:"Raquettes"},{n:"50+",l:"Marques"},{n:"#1",l:"France"},{n:"⭐",l:"Expert conseil"}].map((s,i)=><div key={i}><div style={{fontFamily:T.df,fontSize:"clamp(15px,2vw,18px)",fontWeight:600,color:T.acc2}}>{s.n}</div><div style={{fontFamily:T.bf,fontSize:8,letterSpacing:"1.5px",color:T.grey,textTransform:"uppercase",marginTop:2}}>{s.l}</div></div>)}</div>
+        </div>
+      </div>}
+
+      {/* STEPS */}
+      {["gender","level","style","position","frequency","injury"].includes(ph)&&<div style={{minHeight:"100vh",display:"flex",flexDirection:"column",justifyContent:"center",padding:"76px clamp(16px,4vw,40px) 36px",animation:"fadeIn 0.4s"}}>
+        <div style={{display:"flex",gap:3,marginBottom:36,maxWidth:totalSteps*30}}>{Array.from({length:totalSteps},(_,i)=>i+1).map(i=><div key={i} style={{height:2,flex:1,background:i<=sn?T.acc2:"rgba(255,255,255,0.08)",transition:"background 0.3s"}}/>)}</div>
+        <div style={{marginBottom:28,animation:"slideR 0.4s"}}>
+          <div style={{fontFamily:T.bf,fontSize:"clamp(8px,1.3vw,10px)",letterSpacing:"4px",textTransform:"uppercase",color:T.acc2,marginBottom:8}}>Étape {sn}/{totalSteps}</div>
+          <h2 style={{fontFamily:T.df,fontSize:"clamp(22px,4.5vw,38px)",fontWeight:300,lineHeight:1.15}}>
+            {ph==="gender"&&<span>Vous jouez en <b>homme ou femme ?</b></span>}
+            {ph==="level"&&<span>Quel est votre <b>niveau ?</b></span>}
+            {ph==="style"&&<span>Votre <b>style de jeu ?</b></span>}
+            {ph==="position"&&<span>Votre <b>côté préféré ?</b></span>}
+            {ph==="frequency"&&<span>À quelle <b>fréquence ?</b></span>}
+            {ph==="injury"&&<span>Des <b>sensibilités</b> physiques ?</span>}
+          </h2>
+        </div>
+
+        {/* Gender */}
+        {ph==="gender"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,maxWidth:440}}>{GENS.map((g,idx)=><div key={g.id} onClick={()=>{setGen(g.id);setPh("level");}} style={{cursor:"pointer",position:"relative",overflow:"hidden",aspectRatio:"3/4",background:"#111",animation:"fadeUp 0.4s ease "+(idx*0.08)+"s both"}}><img src={g.img} alt={g.label} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover",filter:"brightness(0.45)",transition:"filter 0.3s"}} onMouseEnter={e=>e.target.style.filter="brightness(0.65)"} onMouseLeave={e=>e.target.style.filter="brightness(0.45)"}/><div style={{position:"absolute",inset:0,background:"linear-gradient(transparent 50%,rgba(0,0,0,0.85))",display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"12px 10px"}}><span style={{fontSize:28,marginBottom:4}}>{g.e}</span><span style={{fontFamily:T.bf,fontSize:"clamp(13px,2.2vw,16px)",fontWeight:600}}>{g.label}</span></div></div>)}</div>}
+
+        {/* Level */}
+        {ph==="level"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,maxWidth:480}}>{LEVELS.map((l,idx)=><div key={l.id} onClick={()=>{setLevel(l.id);setPh("style");}} style={{cursor:"pointer",position:"relative",overflow:"hidden",aspectRatio:"3/4",background:"#111",animation:"fadeUp 0.4s ease "+(idx*0.06)+"s both"}}><img src={l.img} alt={l.label} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover",filter:"brightness(0.4)",transition:"filter 0.3s"}} onMouseEnter={e=>e.target.style.filter="brightness(0.6)"} onMouseLeave={e=>e.target.style.filter="brightness(0.4)"}/><div style={{position:"absolute",inset:0,background:"linear-gradient(transparent 40%,rgba(0,0,0,0.85))",display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"10px 8px"}}><span style={{fontSize:22,marginBottom:2}}>{l.e}</span><span style={{fontFamily:T.bf,fontSize:"clamp(11px,1.5vw,13px)",fontWeight:600}}>{l.label}</span><span style={{fontFamily:T.bf,fontSize:10,color:T.grey,marginTop:2}}>{l.d}</span></div></div>)}</div>}
+
+        {/* Style */}
+        {ph==="style"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,maxWidth:500}}>{STYLES.map((s,idx)=><div key={s.id} onClick={()=>{setStyle(s.id);setPh("position");}} style={{cursor:"pointer",position:"relative",overflow:"hidden",aspectRatio:"3/4",background:"#111",animation:"fadeUp 0.4s ease "+(idx*0.06)+"s both"}}><img src={s.img} alt={s.label} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover",filter:"brightness(0.4)",transition:"filter 0.3s"}} onMouseEnter={e=>e.target.style.filter="brightness(0.6)"} onMouseLeave={e=>e.target.style.filter="brightness(0.4)"}/><div style={{position:"absolute",inset:0,background:"linear-gradient(transparent 40%,rgba(0,0,0,0.85))",display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"10px 8px"}}><span style={{fontSize:22,marginBottom:2}}>{s.e}</span><span style={{fontFamily:T.bf,fontSize:"clamp(10px,1.5vw,12px)",fontWeight:600}}>{s.label}</span><span style={{fontFamily:T.bf,fontSize:9,color:T.grey,marginTop:2}}>{s.d}</span></div></div>)}</div>}
+
+        {/* Position */}
+        {ph==="position"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,maxWidth:500}}>{POSITIONS.map((p,idx)=><div key={p.id} onClick={()=>{setPosition(p.id);setPh("frequency");}} style={{cursor:"pointer",position:"relative",overflow:"hidden",aspectRatio:"3/4",background:"#111",animation:"fadeUp 0.4s ease "+(idx*0.06)+"s both"}}><img src={p.img} alt={p.label} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover",filter:"brightness(0.4)",transition:"filter 0.3s"}} onMouseEnter={e=>e.target.style.filter="brightness(0.6)"} onMouseLeave={e=>e.target.style.filter="brightness(0.4)"}/><div style={{position:"absolute",inset:0,background:"linear-gradient(transparent 40%,rgba(0,0,0,0.85))",display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"10px 8px"}}><span style={{fontSize:22,marginBottom:2}}>{p.e}</span><span style={{fontFamily:T.bf,fontSize:"clamp(10px,1.5vw,12px)",fontWeight:600}}>{p.label}</span><span style={{fontFamily:T.bf,fontSize:9,color:T.grey,marginTop:2}}>{p.d}</span></div></div>)}</div>}
+
+        {/* Frequency */}
+        {ph==="frequency"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,maxWidth:500}}>{FREQS.map((f,idx)=><div key={f.id} onClick={()=>{setFreq(f.id);setPh("injury");}} style={{cursor:"pointer",position:"relative",overflow:"hidden",aspectRatio:"3/4",background:"#111",animation:"fadeUp 0.4s ease "+(idx*0.06)+"s both"}}><img src={f.img} alt={f.label} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover",filter:"brightness(0.4)",transition:"filter 0.3s"}} onMouseEnter={e=>e.target.style.filter="brightness(0.6)"} onMouseLeave={e=>e.target.style.filter="brightness(0.4)"}/><div style={{position:"absolute",inset:0,background:"linear-gradient(transparent 40%,rgba(0,0,0,0.85))",display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"10px 8px"}}><span style={{fontSize:22,marginBottom:2}}>{f.e}</span><span style={{fontFamily:T.bf,fontSize:"clamp(10px,1.5vw,12px)",fontWeight:600}}>{f.label}</span><span style={{fontFamily:T.bf,fontSize:9,color:T.grey,marginTop:2}}>{f.d}</span></div></div>)}</div>}
+
+        {/* Injury */}
+        {ph==="injury"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,maxWidth:420}}>{INJURIES.map((inj,idx)=><div key={inj.id} onClick={()=>doInjury(inj.id)} style={{cursor:"pointer",position:"relative",overflow:"hidden",aspectRatio:"3/4",background:"#111",animation:"fadeUp 0.4s ease "+(idx*0.06)+"s both"}}><img src={inj.img} alt={inj.label} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover",filter:"brightness(0.4)",transition:"filter 0.3s"}} onMouseEnter={e=>e.target.style.filter="brightness(0.6)"} onMouseLeave={e=>e.target.style.filter="brightness(0.4)"}/><div style={{position:"absolute",inset:0,background:"linear-gradient(transparent 40%,rgba(0,0,0,0.85))",display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"10px 8px"}}><span style={{fontSize:22,marginBottom:2}}>{inj.e}</span><span style={{fontFamily:T.bf,fontSize:"clamp(10px,1.5vw,12px)",fontWeight:600}}>{inj.label}</span><span style={{fontFamily:T.bf,fontSize:9,color:T.grey,marginTop:2}}>{inj.d}</span></div></div>)}</div>}
+      </div>}
+
+      {/* ANALYZING */}
+      {ph==="an"&&<div style={{minHeight:"100vh",display:"flex",flexDirection:"column",justifyContent:"center",alignItems:"center",padding:"80px 20px",animation:"fadeIn 0.4s"}}>
+        <div style={{width:80,height:80,position:"relative",marginBottom:30}}>{[0,10,20].map((ins,i)=><div key={i} style={{position:"absolute",inset:ins,borderRadius:"50%",border:"1px solid rgba(232,168,56,"+(0.35-i*0.1)+")",animation:"breathe 2s ease "+(i*0.3)+"s infinite"}}/>)}<div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:6,height:6,borderRadius:"50%",background:T.acc2,animation:"breathe 1.5s ease infinite"}}/></div>
+        <div style={{fontFamily:T.bf,fontSize:9,letterSpacing:"4px",textTransform:"uppercase",color:T.acc2,marginBottom:14}}>Analyse de votre profil</div>
+        <h2 style={{fontFamily:T.df,fontSize:"clamp(20px,4vw,26px)",fontWeight:300,textAlign:"center",marginBottom:24}}>Configuration<br/><span style={{fontWeight:700,fontStyle:"italic"}}>de votre setup</span></h2>
+        {[
+          (LEVELS.find(l=>l.id===level)?.label||"")+" × "+(STYLES.find(s=>s.id===style)?.label||""),
+          "Position : "+(POSITIONS.find(p=>p.id===position)?.label||""),
+          "Fréquence : "+(FREQS.find(f=>f.id===freq)?.label||""),
+          (INJURIES.find(inj=>inj.id===injury)?.label||"Aucune")+" sensibilité",
+          "Analyse des formes & mousses",
+          "Matching 600+ références"
+        ].map((st,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,animation:"fadeUp 0.4s ease "+(0.3+i*0.25)+"s both"}}><div style={{width:4,height:4,borderRadius:"50%",background:T.acc2,animation:"pulse 1.2s ease "+(i*0.2)+"s infinite"}}/><span style={{fontFamily:T.bf,fontSize:11,color:T.grey,fontWeight:300}}>{st}</span></div>)}
+      </div>}
+
+      {/* CATALOGUE */}
+      {ph==="catalogue"&&<div style={{minHeight:"100vh",padding:"80px clamp(16px,4vw,32px) 24px",animation:"fadeIn 0.5s"}}>
+        <div style={{marginBottom:24}}>
+          <div style={{fontFamily:T.bf,fontSize:"clamp(8px,1.3vw,10px)",letterSpacing:"4px",textTransform:"uppercase",color:T.acc2,marginBottom:8}}>Catalogue complet</div>
+          <h2 style={{fontFamily:T.df,fontSize:"clamp(22px,4.5vw,34px)",fontWeight:300,lineHeight:1.15,marginBottom:16}}>Explorez <span style={{fontWeight:700}}>600+ références</span></h2>
+          <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+            {[["raquette","Raquettes"],["chaussure","Chaussures"],["accessoire","Accessoires"]].map(([k,l])=><button key={k} onClick={()=>setCatFilter(k)} style={{padding:"8px 18px",background:catFilter===k?"rgba(232,168,56,0.15)":"rgba(255,255,255,0.03)",border:catFilter===k?"1px solid rgba(232,168,56,0.4)":"1px solid rgba(255,255,255,0.06)",color:catFilter===k?T.acc2:T.grey,fontFamily:T.bf,fontSize:10,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer",transition:"all 0.2s"}}>{l}</button>)}
+          </div>
+          <div style={{display:"flex",gap:6,marginBottom:20}}>
+            {[["score","Par pertinence"],["price-asc","Prix ↑"],["price-desc","Prix ↓"]].map(([k,l])=><button key={k} onClick={()=>setCatSort(k)} style={{padding:"5px 12px",background:"transparent",border:"none",color:catSort===k?T.acc2:T.grey,fontFamily:T.bf,fontSize:9,letterSpacing:"1px",cursor:"pointer",borderBottom:catSort===k?"1px solid "+T.acc2:"1px solid transparent"}}>{l}</button>)}
+          </div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(clamp(140px,30vw,180px),1fr))",gap:"clamp(6px,1.5vw,12px)"}}>
+          {(()=>{
+            const defaultProfile=buildProfile("intermediaire","polyvalent","les-deux","regulier","aucune");
+            let items=P[catFilter].map(p=>({...p,_score:scoreProduct(p,defaultProfile,"intermediaire"),_matchPct:Math.round(Math.min(100,scoreProduct(p,defaultProfile,"intermediaire")*1.2))}));
+            if(catSort==="score") items.sort((a,b)=>b._score-a._score);
+            else if(catSort==="price-asc") items.sort((a,b)=>a.price-b.price);
+            else items.sort((a,b)=>b.price-a.price);
+            return items.map((p,i)=>{
+              const sp=socialProof(p.id);
+              const proMsg=p.level?{debutant:"Idéal pour progresser",intermediaire:"Pour monter en niveau",avance:"Performance avancée",expert:"Compétition"}[p.level]:(p.type||"Essentiel");
+              return <div key={p.id} style={{animation:"fadeUp 0.3s ease "+(i*0.04)+"s both",cursor:"pointer"}} onClick={()=>window.open(p.url,"_blank")}>
+                <div style={{position:"relative",aspectRatio:"1",overflow:"hidden",background:"#f0efeb"}}>
+                  <img src={p.img} alt={p.name} loading="lazy" onError={e=>{e.target.style.display="none";}} style={{width:"100%",height:"100%",objectFit:"contain",padding:"8%",transition:"transform 0.4s"}} onMouseEnter={e=>e.target.style.transform="scale(1.05)"} onMouseLeave={e=>e.target.style.transform="scale(1)"}/>
+                  <div style={{position:"absolute",top:4,left:4,background:"rgba(10,10,10,0.82)",padding:"2px 6px"}}><span style={{fontFamily:T.bf,fontSize:7,fontWeight:600,color:T.acc2}}>{proMsg}</span></div>
+                  <div style={{position:"absolute",bottom:4,right:4,background:"rgba(10,10,10,0.75)",padding:"2px 6px"}}><span style={{fontFamily:T.bf,fontSize:8,color:T.acc2}}>{sp.pct}%</span><span style={{fontFamily:T.bf,fontSize:7,color:T.grey,marginLeft:3}}>choisi</span></div>
+                </div>
+                <div style={{padding:"6px 2px 14px"}}>
+                  <div style={{fontFamily:T.bf,fontSize:8,color:T.grey}}>{p.brand}</div>
+                  <div style={{fontFamily:T.df,fontSize:"clamp(13px,2vw,16px)",fontWeight:700,lineHeight:1.15}}>{p.name}</div>
+                  <div style={{fontFamily:T.bf,fontSize:"clamp(11px,1.5vw,13px)",fontWeight:600,color:T.acc,marginTop:3}}>{p.price} €</div>
+                  {p.forme&&<div style={{fontFamily:T.bf,fontSize:8,color:"rgba(255,255,255,0.3)",marginTop:2}}>{p.forme} · {p.poids}</div>}
+                </div>
+              </div>;
+            });
+          })()}
+        </div>
+        <div style={{textAlign:"center",marginTop:24}}>
+          <button onClick={()=>setPh("gender")} style={{padding:"14px 36px",background:T.acc2,color:T.black,border:"none",fontFamily:T.bf,fontSize:11,fontWeight:600,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer"}}>Trouvez votre setup personnalisé</button>
+        </div>
+      </div>}
+
+      {/* RESULTS */}
+      {ph==="res"&&res&&<div onClick={tch} style={{minHeight:"100vh",padding:"80px 0 24px",animation:"fadeIn 0.5s"}}>
+
+        {/* Profile summary banner */}
+        <div style={{margin:"0 clamp(16px,4vw,32px) 16px",padding:"10px 14px",background:"rgba(232,168,56,0.08)",border:"1px solid rgba(232,168,56,0.15)",animation:"slideDown 0.4s",display:"flex",flexWrap:"wrap",alignItems:"center",gap:8}}>
+          <span style={{fontFamily:T.bf,fontSize:8,letterSpacing:"2px",textTransform:"uppercase",color:T.acc2}}>Votre profil</span>
+          <span style={{fontFamily:T.bf,fontSize:12,color:T.light}}>
+            {LEVELS.find(l=>l.id===level)?.e} {LEVELS.find(l=>l.id===level)?.label}
+            <span style={{color:T.grey}}> · {STYLES.find(s=>s.id===style)?.e} {STYLES.find(s=>s.id===style)?.label}</span>
+            <span style={{color:T.grey}}> · {POSITIONS.find(p=>p.id===position)?.e} {POSITIONS.find(p=>p.id===position)?.label}</span>
+            <span style={{color:T.grey}}> · {FREQS.find(f=>f.id===freq)?.e} {FREQS.find(f=>f.id===freq)?.label}</span>
+            {injury!=="aucune"&&<span style={{color:"#e88"}}>  · {INJURIES.find(i=>i.id===injury)?.e} {INJURIES.find(i=>i.id===injury)?.label}</span>}
+          </span>
+        </div>
+
+        <div style={{padding:"0 clamp(16px,4vw,32px)",marginBottom:16}}>
+          <div style={{fontFamily:T.bf,fontSize:"clamp(8px,1.3vw,10px)",letterSpacing:"4px",textTransform:"uppercase",color:T.acc2,marginBottom:8}}>Votre setup recommandé</div>
+          <h2 style={{fontFamily:T.df,fontSize:"clamp(22px,4.5vw,34px)",fontWeight:300,lineHeight:1.15,marginBottom:12}}><span style={{fontWeight:700}}>Setup complet</span><span style={{fontStyle:"italic"}}> — </span>{STYLES.find(s=>s.id===style)?.label} {LEVELS.find(l=>l.id===level)?.e}</h2>
+          <div style={{display:"flex",gap:"clamp(12px,3vw,20px)",flexWrap:"wrap",padding:"10px 0",borderTop:"1px solid rgba(255,255,255,0.05)",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+            <div><div style={{fontFamily:T.bf,fontSize:8,letterSpacing:"2px",textTransform:"uppercase",color:T.grey}}>Total setup</div><div style={{fontFamily:T.df,fontSize:"clamp(18px,3vw,22px)",fontWeight:700,color:T.acc,marginTop:1}}>{total} €</div></div>
+            {[{l:"Raquettes",v:"600+"},{l:"Livraison",v:"24-48h"},{l:"Retours",v:"30j"},{l:"Conseil",v:"Expert"}].map((t,i)=><div key={i}><div style={{fontFamily:T.bf,fontSize:8,letterSpacing:"2px",textTransform:"uppercase",color:T.grey}}>{t.l}</div><div style={{fontFamily:T.df,fontSize:13,color:T.white,marginTop:1}}>{t.v}</div></div>)}
+          </div>
+        </div>
+
+        {/* Budget slider */}
+        <div style={{padding:"0 clamp(16px,4vw,32px)"}}>
+          <Sliders/>
+        </div>
+
+        {/* Main recommendations — detail inline under each product */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"clamp(6px,1.5vw,12px)",padding:"0 clamp(16px,4vw,32px)"}}>
+        {res.main.flatMap((p,i)=>{
+          const sp=socialProof(p.id);
+          const overBudget=p.cat==="raquette"&&p.price>budgetMax;
+          const isExpanded=exC===i;
+          const card=<div key={p.id+i} id={"product-"+i} style={{animation:"fadeUp 0.4s ease "+(i*0.08)+"s both",opacity:overBudget?0.4:1,transition:"opacity 0.3s"}}>
+          <div onClick={()=>{tch();setExC(isExpanded?null:i);}} style={{cursor:"pointer",position:"relative",aspectRatio:"3/4",overflow:"hidden",background:"#f0efeb"}}>
+            <img src={p.img} alt={p.name} loading="lazy" onError={e=>{e.target.style.display="none";}} style={{width:"100%",height:"100%",objectFit:"contain",padding:"8%",transition:"transform 0.4s"}} onMouseEnter={e=>e.target.style.transform="scale(1.05)"} onMouseLeave={e=>e.target.style.transform="scale(1)"}/>
+            <div style={{position:"absolute",top:6,left:6,background:"rgba(10,10,10,0.82)",padding:"3px 8px",borderRadius:2}}>
+              <span style={{fontFamily:T.bf,fontSize:7,fontWeight:700,letterSpacing:"1.5px",color:T.acc2}}>{p.catLabel}</span>
+            </div>
+            {p._matchPct&&<div style={{position:"absolute",top:6,right:6,background:"rgba(232,168,56,0.92)",padding:"3px 8px",borderRadius:2}}>
+              <span style={{fontFamily:T.bf,fontSize:8,fontWeight:700,color:"#0a0a0a"}}>{p._matchPct}%</span>
+            </div>}
+            <div style={{position:"absolute",bottom:6,right:6,background:"rgba(10,10,10,0.75)",backdropFilter:"blur(4px)",padding:"3px 7px",borderRadius:2}}>
+              <span style={{fontFamily:T.bf,fontSize:8,color:T.acc2,fontWeight:600}}>{sp.pct}%</span>
+              <span style={{fontFamily:T.bf,fontSize:7,color:T.grey,marginLeft:3}}>choisi</span>
+            </div>
+            {isExpanded&&<div style={{position:"absolute",inset:0,background:"rgba(10,10,10,0.5)",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontFamily:T.bf,fontSize:9,letterSpacing:"2px",textTransform:"uppercase",color:T.white}}>▴ Fermer</span></div>}
+          </div>
+          <div style={{padding:"8px 2px 16px"}}>
+            <div style={{fontFamily:T.bf,fontSize:8,letterSpacing:"2px",textTransform:"uppercase",color:T.acc2,marginBottom:2}}>{p.catName}</div>
+            <div style={{fontFamily:T.bf,fontSize:9,color:T.grey,marginBottom:1}}>{p.brand}</div>
+            <div style={{fontFamily:T.df,fontSize:"clamp(16px,2.8vw,22px)",fontWeight:700,lineHeight:1.15}}>{p.name}</div>
+            {p.forme&&<div style={{fontFamily:T.bf,fontSize:9,color:T.grey,marginTop:2}}>{p.forme} · {p.poids} · {p.mousse}</div>}
+            {p.semelle&&<div style={{fontFamily:T.bf,fontSize:9,color:T.grey,marginTop:2}}>Semelle {p.semelle} · {p.amorti}</div>}
+            <div style={{display:"flex",alignItems:"baseline",gap:6,marginTop:4}}>
+              <span style={{fontFamily:T.bf,fontSize:"clamp(12px,1.8vw,14px)",fontWeight:600}}>{p.price} €</span>
+            </div>
+            <div style={{marginTop:6,padding:"5px 7px",background:"rgba(232,168,56,0.06)",borderLeft:"2px solid rgba(232,168,56,0.3)"}}>
+              <p style={{fontFamily:T.bf,fontSize:9,color:T.grey,lineHeight:1.4}}>
+                {p.cat==="raquette"?(
+                  style==="puissance"?"💥 Sélectionnée pour maximiser votre jeu offensif":
+                  style==="controle"?"🎯 Choisie pour son toucher et sa précision":
+                  "⚖️ Polyvalence optimale pour votre profil"
+                ):(
+                  injury==="genoux"?"🦵 Amorti renforcé pour protéger vos articulations":
+                  freq==="intensif"?"⚡ Durabilité testée pour l'usage intensif":
+                  "👟 Adaptée à votre fréquence de jeu"
+                )}
+              </p>
+            </div>
+          </div>
+        </div>;
+          /* Detail panel spans full width, inserted right after its product */
+          const detail=isExpanded?<div key={"detail-"+i} style={{gridColumn:"1 / -1",padding:"16px",background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.06)",animation:"fadeUp 0.2s"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <div><span style={{fontFamily:T.bf,fontSize:9,color:T.acc2}}>{p.brand}</span><br/><span style={{fontFamily:T.df,fontSize:20,fontWeight:700}}>{p.name}</span></div>
+              <button onClick={()=>setExC(null)} style={{background:"none",border:"none",color:T.grey,fontSize:18,cursor:"pointer"}}>×</button>
+            </div>
+            <div style={{padding:"10px 12px",marginBottom:12,background:"rgba(232,168,56,0.06)",borderLeft:"3px solid "+T.acc2}}>
+              <div style={{fontFamily:T.bf,fontSize:8,letterSpacing:"2.5px",textTransform:"uppercase",color:T.acc2,marginBottom:4}}>Pourquoi cette {p.cat} pour vous</div>
+              <p style={{fontFamily:T.bf,fontSize:12,fontWeight:300,color:T.light,lineHeight:1.6}}>{getContextualWhy(p,level,style,position,injury)}</p>
+            </div>
+            {p.tech&&<div style={{padding:"8px 12px",marginBottom:12,background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.04)"}}>
+              <div style={{fontFamily:T.bf,fontSize:7,letterSpacing:"2px",textTransform:"uppercase",color:T.grey,marginBottom:4}}>Technologie</div>
+              <p style={{fontFamily:T.bf,fontSize:11,color:T.light,lineHeight:1.5}}>{p.tech}</p>
+            </div>}
+            {p.forme&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"1px",marginBottom:12,background:"rgba(255,255,255,0.03)"}}>
+              {[["Forme",p.forme],["Poids",p.poids],["Mousse",p.mousse],["Surface",p.surface],["Texture",p.texture],["Balance",p.balance]].map(([k,v])=><div key={k} style={{padding:"7px 10px",background:T.black}}><div style={{fontFamily:T.bf,fontSize:7,letterSpacing:"1.5px",textTransform:"uppercase",color:T.grey,marginBottom:2}}>{k}</div><div style={{fontFamily:T.bf,fontSize:11,color:T.white}}>{v}</div></div>)}
+            </div>}
+            <button onClick={()=>{tch();setSA(sA===i?null:i);}} style={{width:"100%",padding:"8px",marginBottom:sA===i?8:10,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",color:T.grey,fontFamily:T.bf,fontSize:9,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer"}} onMouseEnter={e=>e.target.style.borderColor="rgba(232,168,56,0.3)"} onMouseLeave={e=>e.target.style.borderColor="rgba(255,255,255,0.06)"}>
+              {sA===i?"▾ Masquer":"▸ Alternatives"}
+            </button>
+            {sA===i&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:6,marginBottom:12}}>
+              {P[p.cat].filter(x=>x.id!==p.id).map(alt=><div key={alt.id} onClick={()=>swap(i,alt)} style={{cursor:"pointer",overflow:"hidden",border:"1px solid rgba(255,255,255,0.05)",transition:"border 0.3s"}} onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(232,168,56,0.3)"} onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,0.05)"}>
+                <div style={{aspectRatio:"1",background:"#f0efeb",overflow:"hidden"}}><img src={alt.img} alt={alt.name} loading="lazy" onError={e=>{e.target.style.display="none";}} style={{width:"100%",height:"100%",objectFit:"contain",padding:"8%"}}/></div>
+                <div style={{padding:"5px 6px",background:T.black}}><div style={{fontFamily:T.bf,fontSize:9,color:T.grey}}>{alt.brand}</div><div style={{fontFamily:T.bf,fontSize:11,fontWeight:600}}>{alt.name}</div><div style={{fontFamily:T.bf,fontSize:11,fontWeight:600,color:T.acc,marginTop:2}}>{alt.price}€</div></div>
+              </div>)}
+            </div>}
+            <div style={{display:"flex",gap:6}}>
+              <a href={p.url||"#"} target="_blank" rel="noopener noreferrer" style={{flex:2,padding:"12px",background:T.acc2,color:T.black,border:"none",fontFamily:T.bf,fontSize:10,fontWeight:600,letterSpacing:"1.5px",textTransform:"uppercase",cursor:"pointer",transition:"background 0.3s",textDecoration:"none",textAlign:"center",display:"block"}} onMouseEnter={e=>e.target.style.background=T.acc} onMouseLeave={e=>e.target.style.background=T.acc2}>Ajouter — {p.price}€</a>
+              <a href={p.url||"#"} target="_blank" rel="noopener noreferrer" style={{flex:1,padding:"12px",background:"transparent",border:"1px solid rgba(255,255,255,0.1)",fontFamily:T.bf,fontSize:9,letterSpacing:"1px",textTransform:"uppercase",color:T.grey,textDecoration:"none",textAlign:"center",display:"flex",alignItems:"center",justifyContent:"center"}}>Voir sur le site</a>
+            </div>
+          </div>:null;
+          return detail?[card,detail]:[card];
+        })}
+        </div>
+
+        {/* Accessories */}
+        {res.accessories.length>0&&<div style={{padding:"16px clamp(16px,4vw,32px)"}}>
+          <div style={{fontFamily:T.bf,fontSize:8,letterSpacing:"3px",textTransform:"uppercase",color:T.acc2,marginBottom:12}}>Accessoires recommandés pour votre profil</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:8}}>
+            {res.accessories.map(a=><div key={a.id} style={{background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.05)",overflow:"hidden",animation:"fadeUp 0.3s"}}>
+              <div style={{aspectRatio:"1",background:"#f0efeb",overflow:"hidden"}}><img src={a.img} alt={a.name} loading="lazy" onError={e=>{e.target.style.display="none";}} style={{width:"100%",height:"100%",objectFit:"contain",padding:"12%"}}/></div>
+              <div style={{padding:"8px"}}>
+                <div style={{fontFamily:T.bf,fontSize:7,letterSpacing:"1.5px",textTransform:"uppercase",color:T.acc2,marginBottom:2}}>{a.type}</div>
+                <div style={{fontFamily:T.bf,fontSize:9,color:T.grey}}>{a.brand}</div>
+                <div style={{fontFamily:T.bf,fontSize:11,fontWeight:600}}>{a.name}</div>
+                <div style={{fontFamily:T.bf,fontSize:11,fontWeight:600,color:T.acc,marginTop:4}}>{a.price}€</div>
+                <div style={{fontFamily:T.bf,fontSize:9,color:T.grey,marginTop:4,lineHeight:1.4}}>{a.why}</div>
+              </div>
+            </div>)}
+          </div>
+        </div>}
+
+        {/* COMPETITIVE EDGE — Engagement récurrent */}
+        <div style={{margin:"16px clamp(16px,4vw,32px)",padding:"20px 16px",background:"linear-gradient(135deg,rgba(232,168,56,0.08) 0%,rgba(232,168,56,0.02) 100%)",border:"1px solid rgba(232,168,56,0.15)",animation:"fadeUp 0.5s ease 0.3s both"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+            <span style={{fontSize:18}}>🏆</span>
+            <div style={{fontFamily:T.bf,fontSize:9,letterSpacing:"3px",textTransform:"uppercase",color:T.acc2,fontWeight:600}}>Performance Edge</div>
+          </div>
+          <h3 style={{fontFamily:T.df,fontSize:"clamp(16px,3vw,22px)",fontWeight:300,lineHeight:1.2,marginBottom:10}}>Prenez l'avantage<br/><span style={{fontWeight:700,fontStyle:"italic"}}>sur vos adversaires</span></h3>
+          <p style={{fontFamily:T.bf,fontSize:12,fontWeight:300,color:T.grey,lineHeight:1.6,marginBottom:14}}>
+            {level==="debutant"?"En tant que débutant, le bon équipement peut accélérer votre progression de 40%. Les joueurs avec un setup adapté progressent 2× plus vite que ceux avec du matériel générique.":
+             level==="intermediaire"?"À votre niveau, l'équipement fait la différence : 67% des joueurs intermédiaires qui upgradent leur raquette gagnent 1 niveau en 6 mois. Votre prochain palier est à portée.":
+             level==="avance"?"Les joueurs avancés avec un setup optimisé remportent 23% de points de plus au filet. Votre prochaine raquette peut transformer vos victoires serrées en démonstrations.":
+             "Au niveau compétition, chaque détail compte. Les 5% de performance que donne un carbone 18K vs 12K, c'est la différence entre 1er et 2ème tour."}
+          </p>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}}>
+            {[
+              {v:level==="debutant"?"2×":"23%",l:level==="debutant"?"progression plus rapide":"points gagnés au filet"},
+              {v:"67%",l:"upgradent en 6 mois"},
+              {v:"92%",l:"recommanderaient leur setup"}
+            ].map((s,i)=><div key={i} style={{textAlign:"center",padding:"8px 4px",background:"rgba(255,255,255,0.02)"}}>
+              <div style={{fontFamily:T.df,fontSize:"clamp(14px,2.5vw,18px)",fontWeight:700,color:T.acc2}}>{s.v}</div>
+              <div style={{fontFamily:T.bf,fontSize:7,letterSpacing:"1px",color:T.grey,marginTop:2,textTransform:"uppercase"}}>{s.l}</div>
+            </div>)}
+          </div>
+          <div style={{padding:"10px 12px",background:"rgba(255,255,255,0.02)",borderLeft:"3px solid "+T.acc2,marginBottom:12}}>
+            <p style={{fontFamily:T.bf,fontSize:11,color:T.light,lineHeight:1.5}}>
+              {style==="puissance"?"💥 Votre jeu agressif mérite une raquette qui ne freine pas votre puissance. Revenez régulièrement — de nouveaux modèles diamant arrivent chaque saison.":
+               style==="controle"?"🎯 La précision évolue avec la technologie. Les nouvelles mousses EVA et textures spin skin font progresser le contrôle chaque année. Restez à la pointe.":
+               "⚖️ L'équilibre parfait change avec votre progression. Votre setup d'aujourd'hui est idéal — mais dans 6 mois, votre jeu aura évolué. Revenez nous voir."}
+            </p>
+          </div>
+          <button onClick={()=>setPh("catalogue")} style={{width:"100%",padding:"10px",background:"transparent",border:"1px solid rgba(232,168,56,0.25)",color:T.acc2,fontFamily:T.bf,fontSize:9,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer",transition:"all 0.3s"}} onMouseEnter={e=>{e.target.style.background="rgba(232,168,56,0.1)";}} onMouseLeave={e=>{e.target.style.background="transparent";}}>Découvrir les nouveautés du catalogue</button>
+        </div>
+
+        <div style={{padding:"20px clamp(16px,4vw,32px) 12px"}}>
+          <button style={{width:"100%",padding:"clamp(14px,2vw,18px)",background:T.acc2,color:T.black,border:"none",fontFamily:T.bf,fontSize:"clamp(10px,1.5vw,12px)",fontWeight:600,letterSpacing:"3px",textTransform:"uppercase",cursor:"pointer",transition:"background 0.3s"}} onMouseEnter={e=>e.target.style.background=T.acc} onMouseLeave={e=>e.target.style.background=T.acc2}>Tout ajouter — {total} €</button>
+          <button onClick={reset} style={{width:"100%",marginTop:6,padding:"12px",background:"transparent",border:"1px solid rgba(255,255,255,0.08)",color:T.grey,fontFamily:T.bf,fontSize:9,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer"}}>Modifier mon profil</button>
+        </div>
+        <div style={{padding:"16px 20px",borderTop:"1px solid rgba(255,255,255,0.04)",textAlign:"center"}}><div style={{fontFamily:T.bf,fontSize:7,letterSpacing:"3px",textTransform:"uppercase",color:"rgba(255,255,255,0.25)"}}>Esprit Padel Shop · #1 en France · 600+ raquettes · Conseil expert</div></div>
+      </div>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

@@ -569,13 +569,14 @@ function App(){
           <Sliders/>
         </div>
 
-        {/* Product grid */}
+        {/* Product grid — detail inline under each product */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"clamp(6px,1.5vw,12px)",padding:"0 clamp(16px,4vw,32px)"}}>
-        {res.map((p,i)=>{
+        {res.flatMap((p,i)=>{
           const sp=socialProof(p.id);
           const overBudget=p.price>budgetMax;
-          return<div key={p.id+i} id={"product-"+i} style={{animation:"fadeUp 0.4s ease "+(i*0.08)+"s both",opacity:overBudget?0.4:1,transition:"opacity 0.3s"}}>
-          <div onClick={()=>{tch();setExC(exC===i?null:i);setActiveLayer(i<3?i:null);}} style={{cursor:"pointer",position:"relative",aspectRatio:"3/4",overflow:"hidden",background:"#f0efeb"}}>
+          const isExpanded=exC===i;
+          const card=<div key={p.id+i} id={"product-"+i} style={{animation:"fadeUp 0.4s ease "+(i*0.08)+"s both",opacity:overBudget?0.4:1,transition:"opacity 0.3s"}}>
+          <div onClick={()=>{tch();setExC(isExpanded?null:i);setActiveLayer(i<3?i:null);}} style={{cursor:"pointer",position:"relative",aspectRatio:"3/4",overflow:"hidden",background:"#f0efeb"}}>
             <img src={p.dImg} alt={p.name} loading="lazy" onError={e=>{e.target.style.display="none";}} style={{width:"100%",height:"100%",objectFit:"contain",padding:"8%",transition:"transform 0.4s"}} onMouseEnter={e=>e.target.style.transform="scale(1.05)"} onMouseLeave={e=>e.target.style.transform="scale(1)"}/>
             <div style={{position:"absolute",top:6,left:6,background:"rgba(10,10,10,0.82)",padding:"3px 8px",borderRadius:2}}>
               <span style={{fontFamily:T.bf,fontSize:7,fontWeight:700,letterSpacing:"1.5px",color:T.acc2}}>{p.layerLabel}</span>
@@ -587,7 +588,7 @@ function App(){
               <span style={{fontFamily:T.bf,fontSize:8,color:T.acc2,fontWeight:600}}>{sp.pct}%</span>
               <span style={{fontFamily:T.bf,fontSize:7,color:T.grey,marginLeft:3}}>choisi</span>
             </div>
-            {exC===i&&<div style={{position:"absolute",inset:0,background:"rgba(10,10,10,0.5)",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontFamily:T.bf,fontSize:9,letterSpacing:"2px",textTransform:"uppercase",color:T.white}}>▾ Détails</span></div>}
+            {isExpanded&&<div style={{position:"absolute",inset:0,background:"rgba(10,10,10,0.5)",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontFamily:T.bf,fontSize:9,letterSpacing:"2px",textTransform:"uppercase",color:T.white}}>▴ Fermer</span></div>}
           </div>
           <div style={{padding:"8px 2px 16px"}}>
             <div style={{fontFamily:T.bf,fontSize:8,letterSpacing:"2px",textTransform:"uppercase",color:T.acc2,marginBottom:2}}>{p.layerName}</div>
@@ -598,39 +599,37 @@ function App(){
               <span style={{fontFamily:T.bf,fontSize:10,color:"rgba(255,255,255,0.25)",textDecoration:"line-through"}}>{Math.round(p.price*(MARKET_MULT[p.cat]||1.3))} €</span>
             </div>
           </div>
-        </div>;})}
+        </div>;
+          const detail=isExpanded?<div key={"detail-"+i} style={{gridColumn:"1 / -1",padding:"16px",background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.06)",animation:"fadeUp 0.2s"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <div style={{fontFamily:T.df,fontSize:20,fontWeight:700}}>{p.name} <span style={{fontFamily:T.bf,fontSize:11,fontWeight:300,color:T.grey}}>— {p.type}</span></div>
+              <button onClick={()=>{setExC(null);setActiveLayer(null);}} style={{background:"none",border:"none",color:T.grey,fontSize:18,cursor:"pointer",padding:"0 4px"}}>×</button>
+            </div>
+            <div style={{padding:"10px 12px",marginBottom:12,background:"rgba(122,170,148,0.06)",borderLeft:"3px solid "+T.acc2}}>
+              <div style={{fontFamily:T.bf,fontSize:8,letterSpacing:"2.5px",textTransform:"uppercase",color:T.acc2,marginBottom:4}}>Pourquoi cette pièce pour vous</div>
+              <p style={{fontFamily:T.bf,fontSize:12,fontWeight:300,color:T.light,lineHeight:1.6}}>{getContextualWhy(p,act,sea,cond)}</p>
+            </div>
+            {p.specs&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"1px",marginBottom:12,background:"rgba(255,255,255,0.03)"}}>
+              {Object.entries(p.specs).map(([k,v])=><div key={k} style={{padding:"7px 10px",background:T.black}}><div style={{fontFamily:T.bf,fontSize:7,letterSpacing:"1.5px",textTransform:"uppercase",color:T.grey,marginBottom:2}}>{k}</div><div style={{fontFamily:T.bf,fontSize:11,color:T.white}}>{v}</div></div>)}
+              {p.wt&&<div style={{padding:"7px 10px",background:T.black}}><div style={{fontFamily:T.bf,fontSize:7,letterSpacing:"1.5px",textTransform:"uppercase",color:T.grey,marginBottom:2}}>Étanchéité</div><div style={{fontFamily:T.bf,fontSize:11,color:T.acc}}>{p.wt}</div></div>}
+            </div>}
+            <button onClick={()=>{tch();setSA(sA===i?null:i);}} style={{width:"100%",padding:"8px",marginBottom:sA===i?8:10,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",color:T.grey,fontFamily:T.bf,fontSize:9,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer",transition:"border 0.3s"}} onMouseEnter={e=>e.target.style.borderColor="rgba(122,170,148,0.3)"} onMouseLeave={e=>e.target.style.borderColor="rgba(255,255,255,0.06)"}>
+              {sA===i?"▾ Masquer":"▸ Alternatives AYAQ"}
+            </button>
+            {sA===i&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:6,marginBottom:12}}>
+              {P[p.cat].filter(x=>x.id!==p.id).map(alt=><div key={alt.id} onClick={()=>swap(i,alt)} style={{cursor:"pointer",overflow:"hidden",border:"1px solid rgba(255,255,255,0.05)",transition:"border 0.3s"}} onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(122,170,148,0.3)"} onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,0.05)"}>
+                <div style={{aspectRatio:"1",background:"#f0efeb",overflow:"hidden"}}><img src={gen==="f"&&alt.imgF?alt.imgF:alt.img} alt={alt.name} loading="lazy" onError={e=>{e.target.style.display="none";}} style={{width:"100%",height:"100%",objectFit:"contain",padding:"8%"}}/></div>
+                <div style={{padding:"5px 6px",background:T.black}}><div style={{fontFamily:T.bf,fontSize:11,fontWeight:600}}>{alt.name}</div><div style={{fontFamily:T.bf,fontSize:9,color:T.grey}}>{alt.type}</div><div style={{fontFamily:T.bf,fontSize:11,fontWeight:600,color:T.acc,marginTop:2}}>{alt.price}€</div></div>
+              </div>)}
+            </div>}
+            <div style={{display:"flex",gap:6}}>
+              <button style={{flex:2,padding:"12px",background:T.white,color:T.black,border:"none",fontFamily:T.bf,fontSize:10,fontWeight:600,letterSpacing:"1.5px",textTransform:"uppercase",cursor:"pointer",transition:"background 0.3s"}} onMouseEnter={e=>e.target.style.background=T.acc} onMouseLeave={e=>e.target.style.background=T.white}>Ajouter — {p.price}€</button>
+              <a href={"https://ayaq.com"+(p.url||"/en")} target="_blank" rel="noopener noreferrer" style={{flex:1,padding:"12px",textDecoration:"none",background:"transparent",textAlign:"center",border:"1px solid rgba(255,255,255,0.1)",fontFamily:T.bf,fontSize:9,letterSpacing:"1px",textTransform:"uppercase",color:T.grey,display:"flex",alignItems:"center",justifyContent:"center"}}>AYAQ.com</a>
+            </div>
+          </div>:null;
+          return detail?[card,detail]:[card];
+        })}
         </div>
-
-        {/* Expanded detail panel */}
-        {exC!==null&&res[exC]&&(()=>{const p=res[exC];const i=exC;return<div style={{margin:"0 clamp(16px,4vw,32px)",padding:"16px",background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.06)",animation:"fadeUp 0.25s"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-            <div style={{fontFamily:T.df,fontSize:20,fontWeight:700}}>{p.name} <span style={{fontFamily:T.bf,fontSize:11,fontWeight:300,color:T.grey}}>— {p.type}</span></div>
-            <button onClick={()=>{setExC(null);setActiveLayer(null);}} style={{background:"none",border:"none",color:T.grey,fontSize:18,cursor:"pointer",padding:"0 4px"}}>×</button>
-          </div>
-          <div style={{padding:"10px 12px",marginBottom:12,background:"rgba(122,170,148,0.06)",borderLeft:"3px solid "+T.acc2}}>
-            <div style={{fontFamily:T.bf,fontSize:8,letterSpacing:"2.5px",textTransform:"uppercase",color:T.acc2,marginBottom:4}}>Pourquoi cette pièce pour vous</div>
-            <p style={{fontFamily:T.bf,fontSize:12,fontWeight:300,color:T.light,lineHeight:1.6}}>{getContextualWhy(p,act,sea,cond)}</p>
-          </div>
-          {p.specs&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"1px",marginBottom:12,background:"rgba(255,255,255,0.03)"}}>
-            {Object.entries(p.specs).map(([k,v])=><div key={k} style={{padding:"7px 10px",background:T.black}}><div style={{fontFamily:T.bf,fontSize:7,letterSpacing:"1.5px",textTransform:"uppercase",color:T.grey,marginBottom:2}}>{k}</div><div style={{fontFamily:T.bf,fontSize:11,color:T.white}}>{v}</div></div>)}
-            {p.wt&&<div style={{padding:"7px 10px",background:T.black}}><div style={{fontFamily:T.bf,fontSize:7,letterSpacing:"1.5px",textTransform:"uppercase",color:T.grey,marginBottom:2}}>Étanchéité</div><div style={{fontFamily:T.bf,fontSize:11,color:T.acc}}>{p.wt}</div></div>}
-          </div>}
-
-          <button onClick={()=>{tch();setSA(sA===i?null:i);}} style={{width:"100%",padding:"8px",marginBottom:sA===i?8:10,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",color:T.grey,fontFamily:T.bf,fontSize:9,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer",transition:"border 0.3s"}} onMouseEnter={e=>e.target.style.borderColor="rgba(122,170,148,0.3)"} onMouseLeave={e=>e.target.style.borderColor="rgba(255,255,255,0.06)"}>
-            {sA===i?"▾ Masquer":"▸ Alternatives AYAQ"}
-          </button>
-          {sA===i&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:6,marginBottom:12}}>
-            {P[p.cat].filter(x=>x.id!==p.id).map(alt=><div key={alt.id} onClick={()=>swap(i,alt)} style={{cursor:"pointer",overflow:"hidden",border:"1px solid rgba(255,255,255,0.05)",transition:"border 0.3s"}} onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(122,170,148,0.3)"} onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,0.05)"}>
-              <div style={{aspectRatio:"1",background:"#f0efeb",overflow:"hidden"}}><img src={gen==="f"&&alt.imgF?alt.imgF:alt.img} alt={alt.name} loading="lazy" onError={e=>{e.target.style.display="none";}} style={{width:"100%",height:"100%",objectFit:"contain",padding:"8%"}}/></div>
-              <div style={{padding:"5px 6px",background:T.black}}><div style={{fontFamily:T.bf,fontSize:11,fontWeight:600}}>{alt.name}</div><div style={{fontFamily:T.bf,fontSize:9,color:T.grey}}>{alt.type}</div><div style={{fontFamily:T.bf,fontSize:11,fontWeight:600,color:T.acc,marginTop:2}}>{alt.price}€</div></div>
-            </div>)}
-          </div>}
-
-          <div style={{display:"flex",gap:6}}>
-            <button style={{flex:2,padding:"12px",background:T.white,color:T.black,border:"none",fontFamily:T.bf,fontSize:10,fontWeight:600,letterSpacing:"1.5px",textTransform:"uppercase",cursor:"pointer",transition:"background 0.3s"}} onMouseEnter={e=>e.target.style.background=T.acc} onMouseLeave={e=>e.target.style.background=T.white}>Ajouter — {p.price}€</button>
-            <a href={"https://ayaq.com"+(p.url||"/en")} target="_blank" rel="noopener noreferrer" style={{flex:1,padding:"12px",textDecoration:"none",background:"transparent",textAlign:"center",border:"1px solid rgba(255,255,255,0.1)",fontFamily:T.bf,fontSize:9,letterSpacing:"1px",textTransform:"uppercase",color:T.grey,display:"flex",alignItems:"center",justifyContent:"center"}}>AYAQ.com</a>
-          </div>
-        </div>;})()}
 
         <div style={{padding:"20px clamp(16px,4vw,32px) 12px"}}>
           <button style={{width:"100%",padding:"clamp(14px,2vw,18px)",background:T.white,color:T.black,border:"none",fontFamily:T.bf,fontSize:"clamp(10px,1.5vw,12px)",fontWeight:600,letterSpacing:"3px",textTransform:"uppercase",cursor:"pointer",transition:"background 0.3s"}} onMouseEnter={e=>e.target.style.background=T.acc} onMouseLeave={e=>e.target.style.background=T.white}>Tout ajouter — {total} €</button>

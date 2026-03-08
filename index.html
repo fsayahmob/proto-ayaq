@@ -82,10 +82,10 @@ const SEAS=[
   {id:"winter",label:"Hiver",e:"❄️"},
 ];
 const CONDS=[
-  {id:"rain",label:"Pluie / Neige",e:"🌧️",d:"Protection maximale"},
-  {id:"wind",label:"Vent & Froid",e:"💨",d:"Coupe-vent prioritaire"},
-  {id:"mixed",label:"Mixtes",e:"🌤️",d:"Polyvalence"},
-  {id:"intense",label:"Effort intense",e:"🔥",d:"Respirabilité max"},
+  {id:"rain",label:"Pluie / Neige",e:"🌧️",d:"Protection maximale",img:"https://images.unsplash.com/photo-1534088568595-a066f410bcda?w=400&h=500&fit=crop"},
+  {id:"wind",label:"Vent & Froid",e:"💨",d:"Coupe-vent prioritaire",img:"https://images.unsplash.com/photo-1483921020237-2ff51e8e4b22?w=400&h=500&fit=crop"},
+  {id:"mixed",label:"Mixtes",e:"🌤️",d:"Polyvalence",img:"https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=400&h=500&fit=crop"},
+  {id:"intense",label:"Effort intense",e:"🔥",d:"Respirabilité max",img:"https://images.unsplash.com/photo-1452626038306-9aae5e071dd3?w=400&h=500&fit=crop"},
 ];
 const LVLS=[
   {id:"beginner",label:"Je débute",e:"🌱",d:"L'essentiel pour commencer",img:"https://images.unsplash.com/photo-1551632811-561732d1e306?w=400&h=500&fit=crop"},
@@ -371,6 +371,8 @@ function App(){
   const[warmBreath,setWarmBreath]=useState(50);
   const[activeLayer,setActiveLayer]=useState(null);
   const[manualCond,setManualCond]=useState(false);
+  const[catFilter,setCatFilter]=useState("outer");
+  const[catSort,setCatSort]=useState("score");
   const li=useRef(Date.now());
   const ls=useRef(0);
   const w=typeof window!=="undefined"?window.innerWidth:400;
@@ -490,7 +492,7 @@ function App(){
       {/* HEADER */}
       <header style={{position:"fixed",top:0,left:0,right:0,zIndex:50,display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px clamp(16px,4vw,32px)",background:ph==="hero"?"transparent":"rgba(10,10,10,0.94)",backdropFilter:ph!=="hero"?"blur(16px)":"none",borderBottom:ph!=="hero"?"1px solid rgba(255,255,255,0.05)":"none",transition:"all 0.4s"}}>
         <div onClick={reset} style={{cursor:"pointer"}}><div style={{fontFamily:T.bf,fontSize:"clamp(14px,2.5vw,18px)",fontWeight:700,letterSpacing:"4px"}}>AYAQ</div><div style={{fontFamily:T.bf,fontSize:7,letterSpacing:"2.5px",color:T.grey,textTransform:"uppercase"}}>Explorers by Nature</div></div>
-        {!["hero","an"].includes(ph)&&<button onClick={reset} style={{background:"none",border:"1px solid rgba(255,255,255,0.1)",padding:"5px 14px",color:T.grey,fontSize:9,fontFamily:T.bf,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer"}}>Recommencer</button>}
+        {!["hero","an"].includes(ph)&&<button onClick={reset} style={{background:"none",border:"1px solid rgba(255,255,255,0.1)",padding:"5px 14px",color:T.grey,fontSize:9,fontFamily:T.bf,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer"}}>{ph==="catalogue"?"Accueil":"Recommencer"}</button>}
       </header>
 
       {/* HERO */}
@@ -501,7 +503,10 @@ function App(){
           <div style={{fontFamily:T.bf,fontSize:"clamp(8px,1.5vw,10px)",letterSpacing:"5px",textTransform:"uppercase",color:T.acc2,marginBottom:14}}>Système 3 couches intelligent</div>
           <h1 style={{fontFamily:T.df,fontSize:"clamp(30px,6vw,56px)",fontWeight:300,lineHeight:1.05,marginBottom:16,fontStyle:"italic"}}>Votre équipement,<br/><span style={{fontWeight:700,fontStyle:"normal"}}>pensé pour votre aventure</span></h1>
           <p style={{fontFamily:T.bf,fontSize:"clamp(12px,1.8vw,14px)",fontWeight:300,color:T.grey,lineHeight:1.7,maxWidth:420,marginBottom:28}}>Choisissez votre destination. On détecte la météo sur place et on compose votre système layering AYAQ — membrane Sympatex® ≥45K Schmerber, mérinos RWS 17.5µ, isolation PRIMALOFT® recyclée.</p>
-          <button onClick={()=>setPh("gender")} style={{background:T.white,color:T.black,border:"none",padding:"clamp(12px,2vw,16px) clamp(30px,5vw,48px)",fontFamily:T.bf,fontSize:"clamp(11px,1.5vw,13px)",fontWeight:600,letterSpacing:"3px",textTransform:"uppercase",cursor:"pointer",transition:"background 0.3s"}} onMouseEnter={e=>e.target.style.background=T.acc} onMouseLeave={e=>e.target.style.background=T.white}>Équipez-moi</button>
+          <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+            <button onClick={()=>setPh("gender")} style={{background:T.white,color:T.black,border:"none",padding:"clamp(12px,2vw,16px) clamp(30px,5vw,48px)",fontFamily:T.bf,fontSize:"clamp(11px,1.5vw,13px)",fontWeight:600,letterSpacing:"3px",textTransform:"uppercase",cursor:"pointer",transition:"background 0.3s"}} onMouseEnter={e=>e.target.style.background=T.acc} onMouseLeave={e=>e.target.style.background=T.white}>Équipez-moi</button>
+            <button onClick={()=>setPh("catalogue")} style={{background:"transparent",color:T.white,border:"1px solid rgba(255,255,255,0.2)",padding:"clamp(12px,2vw,16px) clamp(24px,4vw,36px)",fontFamily:T.bf,fontSize:"clamp(10px,1.3vw,12px)",fontWeight:400,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer",transition:"all 0.3s"}} onMouseEnter={e=>{e.target.style.borderColor="rgba(122,170,148,0.5)";e.target.style.color=T.acc2;}} onMouseLeave={e=>{e.target.style.borderColor="rgba(255,255,255,0.2)";e.target.style.color=T.white;}}>Explorer le catalogue</button>
+          </div>
           <div style={{marginTop:32,display:"flex",gap:"clamp(16px,3vw,28px)",flexWrap:"wrap",animation:"fadeUp 0.8s ease 0.6s both"}}>{[{n:"51K",l:"Schmerber record"},{n:"RET<12",l:"Respirabilité"},{n:"0%",l:"PTFE & PFC"},{n:"🇫🇷🇮🇹🇩🇪🇵🇹",l:"Made in EU"}].map((s,i)=><div key={i}><div style={{fontFamily:T.df,fontSize:"clamp(15px,2vw,18px)",fontWeight:600}}>{s.n}</div><div style={{fontFamily:T.bf,fontSize:8,letterSpacing:"1.5px",color:T.grey,textTransform:"uppercase",marginTop:2}}>{s.l}</div></div>)}</div>
         </div>
       </div>}
@@ -530,7 +535,7 @@ function App(){
         {ph==="destination"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,maxWidth:500}}>{DESTS.map((d,idx)=><div key={d.id} onClick={()=>chooseDest(d)} style={{cursor:"pointer",position:"relative",overflow:"hidden",aspectRatio:"16/10",background:"#111",animation:"fadeUp 0.4s ease "+(idx*0.06)+"s both"}}><img src={d.img} alt={d.label} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover",filter:"brightness(0.4)",transition:"filter 0.3s"}} onMouseEnter={e=>e.target.style.filter="brightness(0.6)"} onMouseLeave={e=>e.target.style.filter="brightness(0.4)"}/><div style={{position:"absolute",inset:0,background:"linear-gradient(transparent 30%,rgba(0,0,0,0.85))",display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"10px"}}><span style={{fontSize:18}}>{d.e}</span><span style={{fontFamily:T.bf,fontSize:13,fontWeight:600}}>{d.label}</span><span style={{fontFamily:T.bf,fontSize:10,color:T.grey}}>{d.sub}</span></div></div>)}</div>}
 
         {/* Condition (only if "Autre" destination) */}
-        {ph==="condition"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,maxWidth:420}}>{CONDS.map(c=><Btn key={c.id} label={c.label} emoji={c.e} sub={c.d} onClick={()=>{setCond(c.id);setPh("level");}}/>)}</div>}
+        {ph==="condition"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,maxWidth:420}}>{CONDS.map((c,idx)=><div key={c.id} onClick={()=>{setCond(c.id);setPh("level");}} style={{cursor:"pointer",position:"relative",overflow:"hidden",aspectRatio:"3/4",background:"#111",animation:"fadeUp 0.4s ease "+(idx*0.06)+"s both"}}><img src={c.img} alt={c.label} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover",filter:"brightness(0.4)",transition:"filter 0.3s"}} onMouseEnter={e=>e.target.style.filter="brightness(0.6)"} onMouseLeave={e=>e.target.style.filter="brightness(0.4)"}/><div style={{position:"absolute",inset:0,background:"linear-gradient(transparent 40%,rgba(0,0,0,0.85))",display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"10px 8px"}}><span style={{fontSize:22,marginBottom:2}}>{c.e}</span><span style={{fontFamily:T.bf,fontSize:"clamp(10px,1.5vw,12px)",fontWeight:600}}>{c.label}</span><span style={{fontFamily:T.bf,fontSize:9,color:T.grey,marginTop:2}}>{c.d}</span></div></div>)}</div>}
 
         {/* Level — show detected weather if available */}
         {ph==="level"&&<>
@@ -546,6 +551,49 @@ function App(){
         <div style={{fontFamily:T.bf,fontSize:9,letterSpacing:"4px",textTransform:"uppercase",color:T.acc2,marginBottom:14}}>Analyse en cours</div>
         <h2 style={{fontFamily:T.df,fontSize:"clamp(20px,4vw,26px)",fontWeight:300,textAlign:"center",marginBottom:24}}>Votre système<br/><span style={{fontWeight:700,fontStyle:"italic"}}>de couches</span></h2>
         {[(aObj?.label||"")+" × "+(sObj?.label||""),wCity?(wTemp+"°C à "+wCity):"Conditions météo",(cObj?.e||"")+" "+(cObj?.label||"Analyse conditions"),"Membrane & isolation","Chaleur / respirabilité"].map((st,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,animation:"fadeUp 0.4s ease "+(0.3+i*0.3)+"s both"}}><div style={{width:4,height:4,borderRadius:"50%",background:T.acc2,animation:"pulse 1.2s ease "+(i*0.2)+"s infinite"}}/><span style={{fontFamily:T.bf,fontSize:11,color:T.grey,fontWeight:300}}>{st}</span></div>)}
+      </div>}
+
+      {/* CATALOGUE */}
+      {ph==="catalogue"&&<div style={{minHeight:"100vh",padding:"80px clamp(16px,4vw,32px) 24px",animation:"fadeIn 0.5s"}}>
+        <div style={{marginBottom:24}}>
+          <div style={{fontFamily:T.bf,fontSize:"clamp(8px,1.3vw,10px)",letterSpacing:"4px",textTransform:"uppercase",color:T.acc2,marginBottom:8}}>Catalogue AYAQ</div>
+          <h2 style={{fontFamily:T.df,fontSize:"clamp(22px,4.5vw,34px)",fontWeight:300,lineHeight:1.15,marginBottom:16}}>Système 3 couches — <span style={{fontWeight:700}}>100% Europe</span></h2>
+          <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+            {[["base","Base Layer"],["mid","Mid Layer"],["outer","Outer Layer"],["pants","Pantalons"]].map(([k,l])=><button key={k} onClick={()=>setCatFilter(k)} style={{padding:"8px 18px",background:catFilter===k?"rgba(122,170,148,0.15)":"rgba(255,255,255,0.03)",border:catFilter===k?"1px solid rgba(122,170,148,0.4)":"1px solid rgba(255,255,255,0.06)",color:catFilter===k?T.acc2:T.grey,fontFamily:T.bf,fontSize:10,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer",transition:"all 0.2s"}}>{l}</button>)}
+          </div>
+          <div style={{display:"flex",gap:6,marginBottom:20}}>
+            {[["score","Par pertinence"],["price-asc","Prix ↑"],["price-desc","Prix ↓"]].map(([k,l])=><button key={k} onClick={()=>setCatSort(k)} style={{padding:"5px 12px",background:"transparent",border:"none",color:catSort===k?T.acc2:T.grey,fontFamily:T.bf,fontSize:9,letterSpacing:"1px",cursor:"pointer",borderBottom:catSort===k?"1px solid "+T.acc2:"1px solid transparent"}}>{l}</button>)}
+          </div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(clamp(140px,30vw,180px),1fr))",gap:"clamp(6px,1.5vw,12px)"}}>
+          {(()=>{
+            let items=[...(P[catFilter]||[])].map(p=>({...p,_price:p.price}));
+            if(catSort==="price-asc") items.sort((a,b)=>a.price-b.price);
+            else if(catSort==="price-desc") items.sort((a,b)=>b.price-a.price);
+            return items.map((p,i)=>{
+              const sp=socialProof(p.id);
+              return <div key={p.id} style={{animation:"fadeUp 0.3s ease "+(i*0.04)+"s both",cursor:"pointer"}} onClick={()=>window.open("https://ayaq.com"+(p.url||"/en"),"_blank")}>
+                <div style={{position:"relative",aspectRatio:"3/4",overflow:"hidden",background:"#f0efeb"}}>
+                  <img src={p.img} alt={p.name} loading="lazy" onError={e=>{e.target.style.display="none";}} style={{width:"100%",height:"100%",objectFit:"contain",padding:"8%",transition:"transform 0.4s"}} onMouseEnter={e=>e.target.style.transform="scale(1.05)"} onMouseLeave={e=>e.target.style.transform="scale(1)"}/>
+                  <div style={{position:"absolute",bottom:4,right:4,background:"rgba(10,10,10,0.75)",padding:"2px 6px"}}><span style={{fontFamily:T.bf,fontSize:8,color:T.acc2}}>{sp.pct}%</span><span style={{fontFamily:T.bf,fontSize:7,color:T.grey,marginLeft:3}}>choisi</span></div>
+                  {p.wt&&<div style={{position:"absolute",top:4,left:4,background:"rgba(10,10,10,0.82)",padding:"2px 6px"}}><span style={{fontFamily:T.bf,fontSize:7,fontWeight:600,color:T.acc2}}>{p.wt}</span></div>}
+                </div>
+                <div style={{padding:"6px 2px 14px"}}>
+                  <div style={{fontFamily:T.df,fontSize:"clamp(14px,2.5vw,18px)",fontWeight:700,lineHeight:1.15}}>{p.name}</div>
+                  <div style={{fontFamily:T.bf,fontSize:10,color:T.grey,marginTop:2}}>{p.type}</div>
+                  <div style={{display:"flex",alignItems:"baseline",gap:6,marginTop:4}}>
+                    <span style={{fontFamily:T.bf,fontSize:"clamp(12px,1.8vw,14px)",fontWeight:600}}>{p.price} €</span>
+                    <span style={{fontFamily:T.bf,fontSize:10,color:"rgba(255,255,255,0.25)",textDecoration:"line-through"}}>{Math.round(p.price*(MARKET_MULT[catFilter]||1.3))} €</span>
+                  </div>
+                  <div style={{marginTop:6,padding:"4px 6px",background:"rgba(122,170,148,0.06)",borderLeft:"2px solid rgba(122,170,148,0.3)"}}><p style={{fontFamily:T.bf,fontSize:8,color:T.grey,lineHeight:1.3}}>{p.why?.substring(0,80)}...</p></div>
+                </div>
+              </div>;
+            });
+          })()}
+        </div>
+        <div style={{textAlign:"center",marginTop:24}}>
+          <button onClick={()=>setPh("gender")} style={{padding:"14px 36px",background:T.white,color:T.black,border:"none",fontFamily:T.bf,fontSize:11,fontWeight:600,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer"}}>Trouvez votre système personnalisé</button>
+        </div>
       </div>}
 
       {/* RESULTS */}

@@ -399,6 +399,11 @@ function App(){
   const[ph,setPh]=useState("hero");
   const[catFilter,setCatFilter]=useState("raquette");
   const[catSort,setCatSort]=useState("score");
+  const[textMode,setTextMode]=useState(false);
+  const[chatInput,setChatInput]=useState("");
+  const[chatMsgs,setChatMsgs]=useState([]);
+  const[chatLoading,setChatLoading]=useState(false);
+  const WORKER_URL=window.__PADEL_WORKER_URL||"";
   const[gen,setGen]=useState(null);
   const[level,setLevel]=useState(null);
   const[style,setStyle]=useState(null);
@@ -438,6 +443,73 @@ function App(){
   };
 
   const reset=()=>{setPh("hero");setGen(null);setLevel(null);setStyle(null);setPosition(null);setFreq(null);setInjury(null);setRes(null);setExC(null);setSA(null);setNdg(null);setNs({});setBudgetMax(400);window.scrollTo(0,0);};
+
+  /* ═══ GEMINI TEXT MODE ═══ */
+  const sendToGemini=async(userMsg)=>{
+    if(!WORKER_URL){
+      /* Fallback sans API : extraction heuristique basique */
+      const msg=userMsg.toLowerCase();
+      const profile={genre:gen||"h",level:"intermediaire",style:"polyvalent",position:"les-deux",freq:"regulier",injury:"aucune",summary:""};
+      if(msg.match(/débute|commence|nouveau|premier/)) profile.level="debutant";
+      else if(msg.match(/compét|tournoi|classé|expert/)) profile.level="expert";
+      else if(msg.match(/avanc|3.ans|4.ans|5.ans/)) profile.level="avance";
+      if(msg.match(/smash|attaqu|puissan|offensi/)) profile.style="puissance";
+      else if(msg.match(/contrôle|control|défens|patient|placement/)) profile.style="controle";
+      if(msg.match(/droit/)) profile.position="droite";
+      else if(msg.match(/gauch/)) profile.position="gauche";
+      if(msg.match(/occasion|1.fois|rarement/)) profile.freq="occasionnel";
+      else if(msg.match(/intensi|tous.les.jours|3.fois|4.fois/)) profile.freq="intensif";
+      if(msg.match(/coude|tennis.elbow|avant.bras/)) profile.injury="coude";
+      else if(msg.match(/épaule|poignet/)) profile.injury="epaule";
+      else if(msg.match(/genou|chevill/)) profile.injury="genoux";
+      profile.summary="Profil détecté : "+LEVELS.find(l=>l.id===profile.level)?.label+" · "+STYLES.find(s=>s.id===profile.style)?.label;
+      return profile;
+    }
+    try{
+      const resp=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:userMsg,context:{genre:gen,currentStep:ph}})});
+      const data=await resp.json();
+      return data;
+    }catch(e){return null;}
+  };
+
+  const handleTextSubmit=async()=>{
+    if(!chatInput.trim())return;
+    const userMsg=chatInput.trim();
+    setChatInput("");
+    setChatMsgs(prev=>[...prev,{role:"user",text:userMsg}]);
+    setChatLoading(true);
+    const profile=await sendToGemini(userMsg);
+    setChatLoading(false);
+    if(profile){
+      setChatMsgs(prev=>[...prev,{role:"ai",text:profile.summary||"Profil analysé. Voici votre setup."}]);
+      /* Apply profile */
+      if(profile.level) setLevel(profile.level);
+      if(profile.style) setStyle(profile.style);
+      if(profile.position) setPosition(profile.position);
+      if(profile.freq) setFreq(profile.freq);
+      if(profile.injury) setInjury(profile.injury);
+      /* Go to results after short delay */
+      setTimeout(()=>{
+        const l=profile.level||"intermediaire";
+        const s=profile.style||"polyvalent";
+        const p=profile.position||"les-deux";
+        const f=profile.freq||"regulier";
+        const inj=profile.injury||"aucune";
+        setPh("an");
+        setTimeout(()=>{
+          const r=getRecs(l,s,p,f,inj,gen,budgetMax);
+          setRes(r);setPh("res");
+        },2200);
+      },1500);
+    }
+  };
+
+  /* "Me conseiller" smart defaults */
+  const adviseMe=(step)=>{
+    if(step==="level"){setLevel("intermediaire");setPh("style");}
+    else if(step==="style"){setStyle("polyvalent");setPh("position");}
+    else if(step==="position"){setPosition("les-deux");setPh("frequency");}
+  };
 
   const sn={gender:1,level:2,style:3,position:4,frequency:5,injury:6}[ph]||0;
   const totalSteps=6;
@@ -490,11 +562,36 @@ function App(){
         </div>
       </div>}
 
+      {/* TEXT MODE */}
+      {textMode&&ph!=="hero"&&ph!=="an"&&ph!=="res"&&ph!=="catalogue"&&<div style={{minHeight:"100vh",display:"flex",flexDirection:"column",justifyContent:"center",padding:"76px clamp(16px,4vw,40px) 36px",animation:"fadeIn 0.4s"}}>
+        <div style={{marginBottom:20,animation:"slideR 0.4s"}}>
+          <div style={{fontFamily:T.bf,fontSize:"clamp(8px,1.3vw,10px)",letterSpacing:"4px",textTransform:"uppercase",color:T.acc2,marginBottom:8}}>Mode libre</div>
+          <h2 style={{fontFamily:T.df,fontSize:"clamp(22px,4.5vw,34px)",fontWeight:300,lineHeight:1.15}}>Décrivez-moi<br/><span style={{fontWeight:700,fontStyle:"italic"}}>votre jeu</span></h2>
+          <p style={{fontFamily:T.bf,fontSize:12,color:T.grey,marginTop:8,lineHeight:1.6,maxWidth:420}}>Dites-moi tout : votre niveau, depuis combien de temps vous jouez, ce que vous aimez sur le terrain, vos douleurs... Je construis votre profil.</p>
+        </div>
+        <div style={{maxWidth:500}}>
+          {chatMsgs.map((m,i)=><div key={i} style={{marginBottom:10,display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",animation:"fadeUp 0.3s"}}>
+            <div style={{maxWidth:"85%",padding:"10px 14px",background:m.role==="user"?"rgba(232,168,56,0.12)":"rgba(255,255,255,0.04)",border:m.role==="user"?"1px solid rgba(232,168,56,0.2)":"1px solid rgba(255,255,255,0.06)",borderRadius:m.role==="user"?"12px 12px 2px 12px":"12px 12px 12px 2px"}}>
+              <p style={{fontFamily:T.bf,fontSize:13,color:m.role==="user"?T.light:T.acc2,lineHeight:1.5}}>{m.text}</p>
+            </div>
+          </div>)}
+          {chatLoading&&<div style={{display:"flex",gap:4,padding:"8px 0",animation:"fadeIn 0.3s"}}>{[0,1,2].map(i=><div key={i} style={{width:6,height:6,borderRadius:"50%",background:T.acc2,animation:"pulse 1s ease "+(i*0.2)+"s infinite"}}/>)}</div>}
+          <div style={{display:"flex",gap:8,marginTop:12}}>
+            <input value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")handleTextSubmit();}} placeholder="Ex: Je joue depuis 1 an, plutôt défensif, j'ai mal au coude..." style={{flex:1,padding:"12px 16px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",color:T.white,fontFamily:T.bf,fontSize:13,outline:"none"}} />
+            <button onClick={handleTextSubmit} disabled={chatLoading||!chatInput.trim()} style={{padding:"12px 20px",background:T.acc2,color:T.black,border:"none",fontFamily:T.bf,fontSize:11,fontWeight:600,letterSpacing:"1px",cursor:"pointer",opacity:chatLoading||!chatInput.trim()?0.4:1}}>Analyser</button>
+          </div>
+          <button onClick={()=>setTextMode(false)} style={{marginTop:16,background:"none",border:"none",color:T.grey,fontFamily:T.bf,fontSize:10,cursor:"pointer",letterSpacing:"1px"}}>← Revenir aux choix visuels</button>
+        </div>
+      </div>}
+
       {/* STEPS */}
-      {["gender","level","style","position","frequency","injury"].includes(ph)&&<div style={{minHeight:"100vh",display:"flex",flexDirection:"column",justifyContent:"center",padding:"76px clamp(16px,4vw,40px) 36px",animation:"fadeIn 0.4s"}}>
+      {!textMode&&["gender","level","style","position","frequency","injury"].includes(ph)&&<div style={{minHeight:"100vh",display:"flex",flexDirection:"column",justifyContent:"center",padding:"76px clamp(16px,4vw,40px) 36px",animation:"fadeIn 0.4s"}}>
         <div style={{display:"flex",gap:3,marginBottom:36,maxWidth:totalSteps*30}}>{Array.from({length:totalSteps},(_,i)=>i+1).map(i=><div key={i} style={{height:2,flex:1,background:i<=sn?T.acc2:"rgba(255,255,255,0.08)",transition:"background 0.3s"}}/>)}</div>
         <div style={{marginBottom:28,animation:"slideR 0.4s"}}>
-          <div style={{fontFamily:T.bf,fontSize:"clamp(8px,1.3vw,10px)",letterSpacing:"4px",textTransform:"uppercase",color:T.acc2,marginBottom:8}}>Étape {sn}/{totalSteps}</div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div style={{fontFamily:T.bf,fontSize:"clamp(8px,1.3vw,10px)",letterSpacing:"4px",textTransform:"uppercase",color:T.acc2,marginBottom:8}}>Étape {sn}/{totalSteps}</div>
+            {ph!=="gender"&&<button onClick={()=>{setTextMode(true);setChatMsgs([{role:"ai",text:"Décrivez votre profil de joueur en quelques mots — niveau, style de jeu, fréquence, douleurs éventuelles. Je m'occupe du reste."}]);}} style={{background:"none",border:"1px solid rgba(255,255,255,0.08)",padding:"4px 10px",color:T.grey,fontFamily:T.bf,fontSize:8,letterSpacing:"1.5px",textTransform:"uppercase",cursor:"pointer",transition:"all 0.3s"}} onMouseEnter={e=>{e.target.style.borderColor="rgba(232,168,56,0.3)";e.target.style.color=T.acc2;}} onMouseLeave={e=>{e.target.style.borderColor="rgba(255,255,255,0.08)";e.target.style.color=T.grey;}}>Mode libre ✦</button>}
+          </div>
           <h2 style={{fontFamily:T.df,fontSize:"clamp(22px,4.5vw,38px)",fontWeight:300,lineHeight:1.15}}>
             {ph==="gender"&&<span>Vous jouez en <b>homme ou femme ?</b></span>}
             {ph==="level"&&<span>Quel est votre <b>niveau ?</b></span>}
@@ -509,13 +606,31 @@ function App(){
         {ph==="gender"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,maxWidth:440}}>{GENS.map((g,idx)=><div key={g.id} onClick={()=>{setGen(g.id);setPh("level");}} style={{cursor:"pointer",position:"relative",overflow:"hidden",aspectRatio:"3/4",background:"#111",animation:"fadeUp 0.4s ease "+(idx*0.08)+"s both"}}><img src={g.img} alt={g.label} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover",filter:"brightness(0.45)",transition:"filter 0.3s"}} onMouseEnter={e=>e.target.style.filter="brightness(0.65)"} onMouseLeave={e=>e.target.style.filter="brightness(0.45)"}/><div style={{position:"absolute",inset:0,background:"linear-gradient(transparent 50%,rgba(0,0,0,0.85))",display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"12px 10px"}}><span style={{fontSize:28,marginBottom:4}}>{g.e}</span><span style={{fontFamily:T.bf,fontSize:"clamp(13px,2.2vw,16px)",fontWeight:600}}>{g.label}</span></div></div>)}</div>}
 
         {/* Level */}
-        {ph==="level"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,maxWidth:480}}>{LEVELS.map((l,idx)=><div key={l.id} onClick={()=>{setLevel(l.id);setPh("style");}} style={{cursor:"pointer",position:"relative",overflow:"hidden",aspectRatio:"3/4",background:"#111",animation:"fadeUp 0.4s ease "+(idx*0.06)+"s both"}}><img src={l.img} alt={l.label} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover",filter:"brightness(0.4)",transition:"filter 0.3s"}} onMouseEnter={e=>e.target.style.filter="brightness(0.6)"} onMouseLeave={e=>e.target.style.filter="brightness(0.4)"}/><div style={{position:"absolute",inset:0,background:"linear-gradient(transparent 40%,rgba(0,0,0,0.85))",display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"10px 8px"}}><span style={{fontSize:22,marginBottom:2}}>{l.e}</span><span style={{fontFamily:T.bf,fontSize:"clamp(11px,1.5vw,13px)",fontWeight:600}}>{l.label}</span><span style={{fontFamily:T.bf,fontSize:10,color:T.grey,marginTop:2}}>{l.d}</span></div></div>)}</div>}
+        {ph==="level"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,maxWidth:480}}>{LEVELS.map((l,idx)=><div key={l.id} onClick={()=>{setLevel(l.id);setPh("style");}} style={{cursor:"pointer",position:"relative",overflow:"hidden",aspectRatio:"3/4",background:"#111",animation:"fadeUp 0.4s ease "+(idx*0.06)+"s both"}}><img src={l.img} alt={l.label} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover",filter:"brightness(0.4)",transition:"filter 0.3s"}} onMouseEnter={e=>e.target.style.filter="brightness(0.6)"} onMouseLeave={e=>e.target.style.filter="brightness(0.4)"}/><div style={{position:"absolute",inset:0,background:"linear-gradient(transparent 40%,rgba(0,0,0,0.85))",display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"10px 8px"}}><span style={{fontSize:22,marginBottom:2}}>{l.e}</span><span style={{fontFamily:T.bf,fontSize:"clamp(11px,1.5vw,13px)",fontWeight:600}}>{l.label}</span><span style={{fontFamily:T.bf,fontSize:10,color:T.grey,marginTop:2}}>{l.d}</span></div></div>)}
+          <div onClick={()=>adviseMe("level")} style={{cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",aspectRatio:"3/4",background:"rgba(232,168,56,0.04)",border:"1px dashed rgba(232,168,56,0.25)",animation:"fadeUp 0.4s ease 0.3s both",transition:"all 0.3s"}} onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(232,168,56,0.5)"} onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(232,168,56,0.25)"}>
+            <span style={{fontSize:24,marginBottom:8}}>🤖</span>
+            <span style={{fontFamily:T.bf,fontSize:12,fontWeight:500,color:T.acc2}}>Me conseiller</span>
+            <span style={{fontFamily:T.bf,fontSize:9,color:T.grey,marginTop:4,textAlign:"center",padding:"0 8px"}}>Je ne sais pas trop, aidez-moi</span>
+          </div>
+        </div>}
 
         {/* Style */}
-        {ph==="style"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,maxWidth:500}}>{STYLES.map((s,idx)=><div key={s.id} onClick={()=>{setStyle(s.id);setPh("position");}} style={{cursor:"pointer",position:"relative",overflow:"hidden",aspectRatio:"3/4",background:"#111",animation:"fadeUp 0.4s ease "+(idx*0.06)+"s both"}}><img src={s.img} alt={s.label} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover",filter:"brightness(0.4)",transition:"filter 0.3s"}} onMouseEnter={e=>e.target.style.filter="brightness(0.6)"} onMouseLeave={e=>e.target.style.filter="brightness(0.4)"}/><div style={{position:"absolute",inset:0,background:"linear-gradient(transparent 40%,rgba(0,0,0,0.85))",display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"10px 8px"}}><span style={{fontSize:22,marginBottom:2}}>{s.e}</span><span style={{fontFamily:T.bf,fontSize:"clamp(10px,1.5vw,12px)",fontWeight:600}}>{s.label}</span><span style={{fontFamily:T.bf,fontSize:9,color:T.grey,marginTop:2}}>{s.d}</span></div></div>)}</div>}
+        {ph==="style"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,maxWidth:500}}>{STYLES.map((s,idx)=><div key={s.id} onClick={()=>{setStyle(s.id);setPh("position");}} style={{cursor:"pointer",position:"relative",overflow:"hidden",aspectRatio:"3/4",background:"#111",animation:"fadeUp 0.4s ease "+(idx*0.06)+"s both"}}><img src={s.img} alt={s.label} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover",filter:"brightness(0.4)",transition:"filter 0.3s"}} onMouseEnter={e=>e.target.style.filter="brightness(0.6)"} onMouseLeave={e=>e.target.style.filter="brightness(0.4)"}/><div style={{position:"absolute",inset:0,background:"linear-gradient(transparent 40%,rgba(0,0,0,0.85))",display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"10px 8px"}}><span style={{fontSize:22,marginBottom:2}}>{s.e}</span><span style={{fontFamily:T.bf,fontSize:"clamp(10px,1.5vw,12px)",fontWeight:600}}>{s.label}</span><span style={{fontFamily:T.bf,fontSize:9,color:T.grey,marginTop:2}}>{s.d}</span></div></div>)}
+          <div onClick={()=>adviseMe("style")} style={{cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",aspectRatio:"3/4",background:"rgba(232,168,56,0.04)",border:"1px dashed rgba(232,168,56,0.25)",animation:"fadeUp 0.4s ease 0.2s both",transition:"all 0.3s"}} onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(232,168,56,0.5)"} onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(232,168,56,0.25)"}>
+            <span style={{fontSize:24,marginBottom:8}}>🤖</span>
+            <span style={{fontFamily:T.bf,fontSize:12,fontWeight:500,color:T.acc2}}>Me conseiller</span>
+            <span style={{fontFamily:T.bf,fontSize:9,color:T.grey,marginTop:4,textAlign:"center",padding:"0 8px"}}>Je ne connais pas mon style</span>
+          </div>
+        </div>}
 
         {/* Position */}
-        {ph==="position"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,maxWidth:500}}>{POSITIONS.map((p,idx)=><div key={p.id} onClick={()=>{setPosition(p.id);setPh("frequency");}} style={{cursor:"pointer",position:"relative",overflow:"hidden",aspectRatio:"3/4",background:"#111",animation:"fadeUp 0.4s ease "+(idx*0.06)+"s both"}}><img src={p.img} alt={p.label} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover",filter:"brightness(0.4)",transition:"filter 0.3s"}} onMouseEnter={e=>e.target.style.filter="brightness(0.6)"} onMouseLeave={e=>e.target.style.filter="brightness(0.4)"}/><div style={{position:"absolute",inset:0,background:"linear-gradient(transparent 40%,rgba(0,0,0,0.85))",display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"10px 8px"}}><span style={{fontSize:22,marginBottom:2}}>{p.e}</span><span style={{fontFamily:T.bf,fontSize:"clamp(10px,1.5vw,12px)",fontWeight:600}}>{p.label}</span><span style={{fontFamily:T.bf,fontSize:9,color:T.grey,marginTop:2}}>{p.d}</span></div></div>)}</div>}
+        {ph==="position"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,maxWidth:500}}>{POSITIONS.map((p,idx)=><div key={p.id} onClick={()=>{setPosition(p.id);setPh("frequency");}} style={{cursor:"pointer",position:"relative",overflow:"hidden",aspectRatio:"3/4",background:"#111",animation:"fadeUp 0.4s ease "+(idx*0.06)+"s both"}}><img src={p.img} alt={p.label} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover",filter:"brightness(0.4)",transition:"filter 0.3s"}} onMouseEnter={e=>e.target.style.filter="brightness(0.6)"} onMouseLeave={e=>e.target.style.filter="brightness(0.4)"}/><div style={{position:"absolute",inset:0,background:"linear-gradient(transparent 40%,rgba(0,0,0,0.85))",display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"10px 8px"}}><span style={{fontSize:22,marginBottom:2}}>{p.e}</span><span style={{fontFamily:T.bf,fontSize:"clamp(10px,1.5vw,12px)",fontWeight:600}}>{p.label}</span><span style={{fontFamily:T.bf,fontSize:9,color:T.grey,marginTop:2}}>{p.d}</span></div></div>)}
+          <div onClick={()=>adviseMe("position")} style={{cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",aspectRatio:"3/4",background:"rgba(232,168,56,0.04)",border:"1px dashed rgba(232,168,56,0.25)",animation:"fadeUp 0.4s ease 0.2s both",transition:"all 0.3s"}} onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(232,168,56,0.5)"} onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(232,168,56,0.25)"}>
+            <span style={{fontSize:24,marginBottom:8}}>🤖</span>
+            <span style={{fontFamily:T.bf,fontSize:12,fontWeight:500,color:T.acc2}}>Me conseiller</span>
+            <span style={{fontFamily:T.bf,fontSize:9,color:T.grey,marginTop:4,textAlign:"center",padding:"0 8px"}}>Je joue des deux côtés</span>
+          </div>
+        </div>}
 
         {/* Frequency */}
         {ph==="frequency"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,maxWidth:500}}>{FREQS.map((f,idx)=><div key={f.id} onClick={()=>{setFreq(f.id);setPh("injury");}} style={{cursor:"pointer",position:"relative",overflow:"hidden",aspectRatio:"3/4",background:"#111",animation:"fadeUp 0.4s ease "+(idx*0.06)+"s both"}}><img src={f.img} alt={f.label} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover",filter:"brightness(0.4)",transition:"filter 0.3s"}} onMouseEnter={e=>e.target.style.filter="brightness(0.6)"} onMouseLeave={e=>e.target.style.filter="brightness(0.4)"}/><div style={{position:"absolute",inset:0,background:"linear-gradient(transparent 40%,rgba(0,0,0,0.85))",display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"10px 8px"}}><span style={{fontSize:22,marginBottom:2}}>{f.e}</span><span style={{fontFamily:T.bf,fontSize:"clamp(10px,1.5vw,12px)",fontWeight:600}}>{f.label}</span><span style={{fontFamily:T.bf,fontSize:9,color:T.grey,marginTop:2}}>{f.d}</span></div></div>)}</div>}
@@ -585,15 +700,11 @@ function App(){
       {/* RESULTS */}
       {ph==="res"&&res&&<div onClick={tch} style={{minHeight:"100vh",padding:"80px 0 24px",animation:"fadeIn 0.5s"}}>
 
-        {/* Profile summary banner */}
-        <div style={{margin:"0 clamp(16px,4vw,32px) 16px",padding:"10px 14px",background:"rgba(232,168,56,0.08)",border:"1px solid rgba(232,168,56,0.15)",animation:"slideDown 0.4s",display:"flex",flexWrap:"wrap",alignItems:"center",gap:8}}>
-          <span style={{fontFamily:T.bf,fontSize:8,letterSpacing:"2px",textTransform:"uppercase",color:T.acc2}}>Votre profil</span>
-          <span style={{fontFamily:T.bf,fontSize:12,color:T.light}}>
-            {LEVELS.find(l=>l.id===level)?.e} {LEVELS.find(l=>l.id===level)?.label}
-            <span style={{color:T.grey}}> · {STYLES.find(s=>s.id===style)?.e} {STYLES.find(s=>s.id===style)?.label}</span>
-            <span style={{color:T.grey}}> · {POSITIONS.find(p=>p.id===position)?.e} {POSITIONS.find(p=>p.id===position)?.label}</span>
-            <span style={{color:T.grey}}> · {FREQS.find(f=>f.id===freq)?.e} {FREQS.find(f=>f.id===freq)?.label}</span>
-            {injury!=="aucune"&&<span style={{color:"#e88"}}>  · {INJURIES.find(i=>i.id===injury)?.e} {INJURIES.find(i=>i.id===injury)?.label}</span>}
+        {/* Profile summary — compact */}
+        <div style={{margin:"0 clamp(16px,4vw,32px) 12px",padding:"8px 14px",background:"rgba(232,168,56,0.05)",border:"1px solid rgba(232,168,56,0.1)",animation:"slideDown 0.4s"}}>
+          <span style={{fontFamily:T.bf,fontSize:11,color:T.light}}>
+            {LEVELS.find(l=>l.id===level)?.label} · {STYLES.find(s=>s.id===style)?.label} · {POSITIONS.find(p=>p.id===position)?.label} · {FREQS.find(f=>f.id===freq)?.label}
+            {injury!=="aucune"&&<span style={{color:"#e88"}}> · {INJURIES.find(i=>i.id===injury)?.label}</span>}
           </span>
         </div>
 
@@ -624,36 +735,14 @@ function App(){
               <span style={{fontFamily:T.bf,fontSize:7,fontWeight:700,letterSpacing:"1.5px",color:T.acc2}}>{p.catLabel}</span>
             </div>
             {p._matchPct&&<div style={{position:"absolute",top:6,right:6,background:"rgba(232,168,56,0.92)",padding:"3px 8px",borderRadius:2}}>
-              <span style={{fontFamily:T.bf,fontSize:8,fontWeight:700,color:"#0a0a0a"}}>{p._matchPct}%</span>
+              <span style={{fontFamily:T.bf,fontSize:8,fontWeight:700,color:"#0a0a0a"}}>{p._matchPct}% match</span>
             </div>}
-            <div style={{position:"absolute",bottom:6,right:6,background:"rgba(10,10,10,0.75)",backdropFilter:"blur(4px)",padding:"3px 7px",borderRadius:2}}>
-              <span style={{fontFamily:T.bf,fontSize:8,color:T.acc2,fontWeight:600}}>{sp.pct}%</span>
-              <span style={{fontFamily:T.bf,fontSize:7,color:T.grey,marginLeft:3}}>choisi</span>
-            </div>
             {isExpanded&&<div style={{position:"absolute",inset:0,background:"rgba(10,10,10,0.5)",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontFamily:T.bf,fontSize:9,letterSpacing:"2px",textTransform:"uppercase",color:T.white}}>▴ Fermer</span></div>}
           </div>
-          <div style={{padding:"8px 2px 16px"}}>
-            <div style={{fontFamily:T.bf,fontSize:8,letterSpacing:"2px",textTransform:"uppercase",color:T.acc2,marginBottom:2}}>{p.catName}</div>
+          <div style={{padding:"8px 2px 12px"}}>
             <div style={{fontFamily:T.bf,fontSize:9,color:T.grey,marginBottom:1}}>{p.brand}</div>
             <div style={{fontFamily:T.df,fontSize:"clamp(16px,2.8vw,22px)",fontWeight:700,lineHeight:1.15}}>{p.name}</div>
-            {p.forme&&<div style={{fontFamily:T.bf,fontSize:9,color:T.grey,marginTop:2}}>{p.forme} · {p.poids} · {p.mousse}</div>}
-            {p.semelle&&<div style={{fontFamily:T.bf,fontSize:9,color:T.grey,marginTop:2}}>Semelle {p.semelle} · {p.amorti}</div>}
-            <div style={{display:"flex",alignItems:"baseline",gap:6,marginTop:4}}>
-              <span style={{fontFamily:T.bf,fontSize:"clamp(12px,1.8vw,14px)",fontWeight:600}}>{p.price} €</span>
-            </div>
-            <div style={{marginTop:6,padding:"5px 7px",background:"rgba(232,168,56,0.06)",borderLeft:"2px solid rgba(232,168,56,0.3)"}}>
-              <p style={{fontFamily:T.bf,fontSize:9,color:T.grey,lineHeight:1.4}}>
-                {p.cat==="raquette"?(
-                  style==="puissance"?"💥 Sélectionnée pour maximiser votre jeu offensif":
-                  style==="controle"?"🎯 Choisie pour son toucher et sa précision":
-                  "⚖️ Polyvalence optimale pour votre profil"
-                ):(
-                  injury==="genoux"?"🦵 Amorti renforcé pour protéger vos articulations":
-                  freq==="intensif"?"⚡ Durabilité testée pour l'usage intensif":
-                  "👟 Adaptée à votre fréquence de jeu"
-                )}
-              </p>
-            </div>
+            <div style={{fontFamily:T.bf,fontSize:"clamp(12px,1.8vw,14px)",fontWeight:600,marginTop:4}}>{p.price} €</div>
           </div>
         </div>;
           /* Detail panel spans full width, inserted right after its product */

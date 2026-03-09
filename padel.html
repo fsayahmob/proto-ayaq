@@ -472,25 +472,30 @@ function App(){
   const heuristicFallback=(userMsg)=>{
     const msg=userMsg.toLowerCase();
     const profile={level:"intermediaire",style:"polyvalent",position:"les-deux",freq:"regulier",injury:"aucune",tags:[],summary:""};
-    if(msg.match(/débute|commence|nouveau|premier/)){profile.level="debutant";profile.tags.push("debutant","confort","tolerant","progression");}
-    else if(msg.match(/compét|tournoi|classé|expert/)){profile.level="expert";profile.tags.push("expert","pro","competition");}
-    else if(msg.match(/avanc|3.ans|4.ans|5.ans/)){profile.level="avance";profile.tags.push("avance","competition");}
-    else profile.tags.push("intermediaire","polyvalent");
-    if(msg.match(/smash|attaqu|puissan|offensi/)){profile.style="puissance";profile.tags.push("puissance","attaque","smash","explosif");}
-    else if(msg.match(/contrôle|control|défens|patient|placement/)){profile.style="controle";profile.tags.push("controle","defense","placement","patience");}
-    else profile.tags.push("polyvalent","equilibre");
-    if(msg.match(/droit/)) profile.position="droite";
-    else if(msg.match(/gauch/)) profile.position="gauche";
-    if(msg.match(/occasion|1.fois|rarement/)) profile.freq="occasionnel";
-    else if(msg.match(/intensi|tous.les.jours|3.fois|4.fois/)){profile.freq="intensif";profile.tags.push("intensif","durable");}
-    if(msg.match(/coude|tennis.elbow|avant.bras/)){profile.injury="coude";profile.tags.push("confort","anti-vibration");}
-    else if(msg.match(/épaule|poignet/)){profile.injury="epaule";profile.tags.push("leger","confort");}
-    else if(msg.match(/genou|chevill/)){profile.injury="genoux";profile.tags.push("amorti","protection","genoux");}
-    if(msg.match(/leger|léger|light/)) profile.tags.push("leger");
-    if(msg.match(/confort/)) profile.tags.push("confort");
-    if(msg.match(/spin|effet/)) profile.tags.push("spin","effet");
+    const details=[];
+    if(msg.match(/débute|commence|nouveau|premier/)){profile.level="debutant";profile.tags.push("debutant","confort","tolerant","progression");details.push("niveau débutant");}
+    else if(msg.match(/compét|tournoi|classé|expert/)){profile.level="expert";profile.tags.push("expert","pro","competition");details.push("niveau expert");}
+    else if(msg.match(/avanc|3.ans|4.ans|5.ans/)){profile.level="avance";profile.tags.push("avance","competition");details.push("niveau avancé");}
+    if(msg.match(/smash|attaqu|puissan|offensi/)){profile.style="puissance";profile.tags.push("puissance","attaque","smash","explosif");details.push("style puissance");}
+    else if(msg.match(/contrôle|control|défens|patient|placement/)){profile.style="controle";profile.tags.push("controle","defense","placement","patience");details.push("jeu défensif");}
+    if(!details.length) profile.tags.push("intermediaire","polyvalent");
+    if(msg.match(/droit/)){profile.position="droite";profile.tags.push("droite","precis");details.push("côté droit");}
+    else if(msg.match(/gauch/)){profile.position="gauche";profile.tags.push("puissance","attaque","explosif");details.push("côté gauche — puissance au filet");}
+    if(msg.match(/occasion|1.fois|rarement/)){profile.freq="occasionnel";details.push("jeu occasionnel");}
+    else if(msg.match(/intensi|tous.les.jours|3.fois|4.fois/)){profile.freq="intensif";profile.tags.push("intensif","durable");details.push("pratique intensive");}
+    if(msg.match(/coude|tennis.elbow|avant.bras/)){profile.injury="coude";profile.tags.push("confort","anti-vibration");details.push("sensibilité coude");}
+    else if(msg.match(/épaule|poignet/)){profile.injury="epaule";profile.tags.push("leger","confort");details.push("sensibilité épaule");}
+    else if(msg.match(/genou|chevill/)){profile.injury="genoux";profile.tags.push("amorti","protection","genoux");details.push("sensibilité genoux");}
+    if(msg.match(/leger|léger|light/)){profile.tags.push("leger");details.push("recherche légèreté");}
+    if(msg.match(/confort/)){profile.tags.push("confort");details.push("priorité confort");}
+    if(msg.match(/spin|effet/)){profile.tags.push("spin","effet");details.push("jeu à effets");}
+    if(msg.match(/battre|gagner|vaincre|dominer/)){profile.tags.push("competition","puissance");details.push("objectif compétition");}
     profile.tags=[...new Set(profile.tags)];
-    profile.summary="Profil détecté : "+LEVELS.find(l=>l.id===profile.level)?.label+" · "+STYLES.find(s=>s.id===profile.style)?.label;
+    const levelLabel=LEVELS.find(l=>l.id===profile.level)?.label||"Intermédiaire";
+    const styleLabel=STYLES.find(s=>s.id===profile.style)?.label||"Polyvalent";
+    profile.summary=details.length>0
+      ?`Compris ! J'ai noté : ${details.join(", ")}. Je configure un setup ${levelLabel} orienté ${styleLabel} pour vous.`
+      :`Profil ${levelLabel} · ${styleLabel}. Précisez votre niveau ou style pour un setup plus personnalisé.`;
     return profile;
   };
 
@@ -500,9 +505,21 @@ function App(){
       const body={message:userMsg};
       if(currentProfile) body.currentProfile=currentProfile;
       const resp=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-      if(resp.ok){const data=await resp.json();if(data.level) return data;}
-    }catch(e){}
+      if(resp.ok){
+        const data=await resp.json();
+        if(data.level){
+          console.log("[Gemini] API response:",data);
+          return data;
+        }
+        console.warn("[Gemini] API returned no level:",data);
+      }else{
+        console.warn("[Gemini] API error:",resp.status,await resp.text().catch(()=>""));
+      }
+    }catch(e){
+      console.warn("[Gemini] Fetch failed:",e.message);
+    }
     /* Fallback heuristique si API indisponible */
+    console.log("[Gemini] Using heuristic fallback");
     return heuristicFallback(userMsg);
   };
 

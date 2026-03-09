@@ -260,9 +260,9 @@ const PRODUCTS_QUERY = `query($cursor: String) {
   products(first: 250, after: $cursor) {
     pageInfo { hasNextPage endCursor }
     edges { node {
-      title handle productType vendor availableForSale description
+      title handle productType vendor availableForSale
       priceRange { minVariantPrice { amount currencyCode } }
-      images(first: 5) { edges { node { url altText } } }
+      images(first: 1) { edges { node { url altText } } }
       variants(first: 10) { edges { node {
         title availableForSale
         price { amount currencyCode }
@@ -451,11 +451,16 @@ function composeBundle(catalog, weather, signals, previousBundle, direction) {
 function getPrice(p) {
   return parseFloat(p.priceRange.minVariantPrice.amount);
 }
-function getImage(p) {
-  return p.images.edges.length > 0 ? p.images.edges[0].node.url : '';
+function getImage(p, width = 300) {
+  if (p.images.edges.length === 0) return '';
+  const url = p.images.edges[0].node.url;
+  return url.includes('?') ? url + '&width=' + width : url + '?width=' + width;
 }
 function getAllImages(p) {
-  return p.images.edges.map(e => e.node.url);
+  return p.images.edges.map(e => {
+    const url = e.node.url;
+    return url.includes('?') ? url + '&width=600' : url + '?width=600';
+  });
 }
 function getSizes(p) {
   return p.variants.edges
@@ -660,12 +665,46 @@ function DetailOverlay({ bundle, onClose }) {
   );
 }
 
+const DETAIL_QUERY = `query($handle: String!) {
+  product(handle: $handle) {
+    description
+    images(first: 8) { edges { node { url altText } } }
+  }
+}`;
+
+async function fetchProductDetail(handle) {
+  try {
+    const res = await fetch(STOREFRONT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Shopify-Storefront-Access-Token': STOREFRONT_TOKEN },
+      body: JSON.stringify({ query: DETAIL_QUERY, variables: { handle } })
+    });
+    const json = await res.json();
+    if (json.data && json.data.product) {
+      return {
+        description: json.data.product.description || '',
+        images: json.data.product.images.edges.map(e => {
+          const url = e.node.url;
+          return url.includes('?') ? url + '&width=600' : url + '?width=600';
+        })
+      };
+    }
+  } catch (e) { console.warn('[Detail] fetch error:', e.message); }
+  return { description: '', images: getAllImages(product) };
+}
+
 function ProductBottomSheet({ product, onClose, shopDomain }) {
   const [closing, setClosing] = useState(false);
-  const images = getAllImages(product);
+  const [detail, setDetail] = useState(null);
   const sizes = getSizes(product);
   const price = Math.round(getPrice(product));
-  const desc = product.description || '';
+
+  useEffect(() => {
+    fetchProductDetail(product.handle).then(setDetail);
+  }, [product.handle]);
+
+  const images = detail ? detail.images : [getImage(product, 600)].filter(Boolean);
+  const desc = detail ? detail.description : '';
 
   const dismiss = useCallback(() => {
     setClosing(true);

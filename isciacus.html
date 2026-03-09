@@ -138,8 +138,9 @@ letter-spacing:.1em;opacity:.4;font-weight:300}
 
 .swipe-btn{width:52px;height:52px;border-radius:50%;border:1.5px solid var(--border);
 background:transparent;color:var(--text-secondary);font-size:1.4rem;cursor:pointer;
-display:flex;align-items:center;justify-content:center;transition:border-color .2s,color .2s;flex-shrink:0}
-.swipe-btn:hover{border-color:var(--accent);color:var(--accent)}
+display:flex;align-items:center;justify-content:center;transition:border-color .2s,color .2s;
+flex-shrink:0;-webkit-tap-highlight-color:transparent;outline:none}
+@media(hover:hover){.swipe-btn:hover{border-color:var(--accent);color:var(--accent)}}
 .swipe-btn:active{transform:scale(.9)}
 
 .swipe-stamp{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) scale(0);

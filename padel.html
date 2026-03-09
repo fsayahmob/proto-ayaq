@@ -570,6 +570,7 @@ function App(){
   const [feedInterests,setFeedInterests]=useState([]);
   const [feedNudgeMap,setFeedNudgeMap]=useState({});
   const [feedChatInput,setFeedChatInput]=useState("");
+  const [feedChatMsgs,setFeedChatMsgs]=useState([]);
   const [feedProfile,setFeedProfile]=useState(null);
   const [feedChatLoading,setFeedChatLoading]=useState(false);
   const [feedExpanded,setFeedExpanded]=useState(null);
@@ -695,23 +696,31 @@ function App(){
     if(!feedChatInput.trim()) return;
     const msg=feedChatInput.trim();
     setFeedChatInput("");
+    setFeedChatMsgs(prev=>[...prev,{role:"user",text:msg}]);
     setFeedChatLoading(true);
     /* Detect product category keywords locally */
     const lower=msg.toLowerCase();
     let detectedCat=null;
+    const catLabels={chaussure:"chaussures",raquette:"raquettes",accessoire:"accessoires"};
     if(lower.match(/chaussur|shoe|sprint|appui|semelle/)) detectedCat="chaussure";
     else if(lower.match(/raquette|racket|pala|raq/)) detectedCat="raquette";
     else if(lower.match(/access|sac|balle|surgrip|housse|grip|protect/)) detectedCat="accessoire";
     setFeedCatBoost(detectedCat);
-    /* If pure category search, skip Gemini — instant reorder is enough */
+    /* If pure category search, skip Gemini — instant reorder + feedback message */
     if(detectedCat){
+      const count=allProducts.filter(p=>p.cat===detectedCat).length;
+      setFeedChatMsgs(prev=>[...prev,{role:"ai",text:`J'ai réorganisé le catalogue pour mettre en avant les ${catLabels[detectedCat]}. ${count} produits correspondent — scrollez pour explorer.`}]);
       setFeedChatLoading(false);
       return;
     }
-    /* Otherwise, ask Gemini for player profile (e.g. "je suis débutant") */
+    /* Otherwise, ask Gemini for player profile */
     const profile=await sendToGemini(msg);
     setFeedChatLoading(false);
-    if(profile) setFeedProfile(profile);
+    if(profile){
+      setFeedProfile(profile);
+      const tagStr=profile.tags&&profile.tags.length>0?` Tags détectés : ${profile.tags.slice(0,5).join(", ")}.`:"";
+      setFeedChatMsgs(prev=>[...prev,{role:"ai",text:(profile.summary||"Profil analysé.")+tagStr+" Le catalogue s'adapte à votre profil."}]);
+    }
   };
 
   const sn={gender:1,level:2,style:3,position:4,frequency:5,injury:6}[ph]||0;
@@ -857,13 +866,13 @@ function App(){
         return <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:50,background:"rgba(10,10,10,0.92)",backdropFilter:"blur(16px)",borderTop:"1px solid rgba(255,255,255,0.06)",padding:"8px clamp(16px,4vw,32px) 12px"}}>
           <div style={{maxWidth:900,margin:"0 auto"}}>
             {/* Chat messages — last 3, compact */}
-            {(isStep||isRes)&&chatMsgs.length>0&&<div style={{maxHeight:100,overflowY:"auto",marginBottom:6}}>
-              {chatMsgs.slice(-3).map((m,i)=><div key={i} style={{marginBottom:4,display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
+            {(()=>{const msgs=isHero?feedChatMsgs:chatMsgs;return msgs.length>0&&<div style={{maxHeight:100,overflowY:"auto",marginBottom:6}}>
+              {msgs.slice(-3).map((m,i)=><div key={i} style={{marginBottom:4,display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
                 <div style={{maxWidth:"80%",padding:"4px 8px",background:m.role==="user"?"rgba(232,168,56,0.1)":"rgba(255,255,255,0.03)",border:m.role==="user"?"1px solid rgba(232,168,56,0.12)":"1px solid rgba(255,255,255,0.04)",borderRadius:m.role==="user"?"6px 6px 2px 6px":"6px 6px 6px 2px"}}>
                   <p style={{fontFamily:T.bf,fontSize:10,color:m.role==="user"?T.light:T.acc2,lineHeight:1.3}}>{m.text}</p>
                 </div>
               </div>)}
-            </div>}
+            </div>;})()}
             <div style={{fontFamily:T.bf,fontSize:7,letterSpacing:"2px",textTransform:"uppercase",color:T.grey,marginBottom:5,textAlign:"center"}}>{statusText}</div>
             <div style={{display:"flex",gap:8}}>
               <input value={inputVal} onChange={e=>setInputVal(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&inputVal.trim())onSubmit();}} placeholder={placeholder} style={{flex:1,padding:"10px 14px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",color:T.white,fontFamily:T.bf,fontSize:12,outline:"none",transition:"border 0.3s"}} onFocus={e=>e.target.style.borderColor="rgba(232,168,56,0.3)"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.08)"}/>

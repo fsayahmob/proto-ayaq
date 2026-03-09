@@ -10,10 +10,10 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
---bg:#0a0a0a;--bg-card:#141414;--bg-card-hover:#1a1a1a;
---text:#e8e8e6;--text-secondary:#8a8a8a;
---accent:#c9a96e;--accent-soft:rgba(201,169,110,0.15);
---border:#1e1e1e;--success:#4a9;--reject:#a44;
+--bg:#f5f3ef;--bg-card:#ffffff;--bg-card-hover:#f0ede8;
+--text:#1a1a1a;--text-secondary:#6b6b6b;
+--accent:#9a7b4f;--accent-soft:rgba(154,123,79,0.1);
+--border:#e0ddd7;--success:#3a8a6a;--reject:#b94444;
 --font-serif:'Cormorant Garamond',serif;
 --font-sans:'Outfit',sans-serif;
 }
@@ -86,7 +86,7 @@ position:relative;cursor:pointer}
 .hero-img-wrap img{width:100%;height:100%;object-fit:cover;display:block;
 transition:opacity .25s ease}
 .hero-info{position:absolute;bottom:0;left:0;right:0;
-background:linear-gradient(to top,rgba(10,10,10,.85) 0%,transparent 100%);
+background:linear-gradient(to top,rgba(255,255,255,.85) 0%,transparent 100%);
 padding:14px 12px 10px;display:flex;justify-content:space-between;align-items:flex-end}
 .hero-info-left{display:flex;flex-direction:column;gap:1px}
 .hero-slot-label{font-size:.6rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.08em}
@@ -174,7 +174,7 @@ animation:nudgeIn .3s ease forwards}
 .nudge-toast.exiting{animation:nudgeOut .3s ease forwards}
 
 .detail-overlay{position:fixed;top:0;left:0;right:0;bottom:0;
-background:rgba(10,10,10,.97);z-index:50;overflow-y:auto;
+background:rgba(245,243,239,.97);z-index:50;overflow-y:auto;
 animation:fadeIn .25s ease}
 .detail-content{max-width:430px;margin:0 auto;padding:20px}
 .detail-close{position:sticky;top:0;text-align:right;padding:8px 0 16px;z-index:1}
@@ -198,10 +198,10 @@ text-underline-offset:2px;margin-top:4px;display:inline-block}
 .detail-total span{font-family:var(--font-serif);font-size:1.4rem;color:var(--accent)}
 
 .slot-swap-btn{position:absolute;bottom:4px;right:4px;width:22px;height:22px;
-border-radius:50%;background:rgba(10,10,10,.7);border:1px solid rgba(201,169,110,.4);
+border-radius:50%;background:rgba(255,255,255,.8);border:1px solid rgba(154,123,79,.3);
 display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--accent);
 cursor:pointer;opacity:.7;transition:opacity .2s,background .2s;z-index:2;padding:0;line-height:1}
-.slot-swap-btn:hover,.slot-swap-btn:active{opacity:1;background:rgba(10,10,10,.9)}
+.slot-swap-btn:hover,.slot-swap-btn:active{opacity:1;background:rgba(255,255,255,.95)}
 
 .scroll-peek{text-align:center;padding:6px 0 2px;position:relative}
 .scroll-peek::before{content:'';position:absolute;top:-30px;left:0;right:0;height:30px;
@@ -1633,8 +1633,6 @@ function App() {
         setEnterFrom(direction === 'right' ? -150 : 150);
         setEntering(true);
         setBundleCount(c => c + 1);
-        setActiveSlot(null);
-        setAlternatives(null);
         setIsScrolled(false);
         setHeroSlot(null);
         if (cardRef.current) cardRef.current.scrollTop = 0;

@@ -54,13 +54,16 @@ text-transform:uppercase}
 .bundle-card{position:absolute;top:0;left:12px;right:12px;bottom:0;
 background:var(--bg-card);border-radius:16px 16px 0 0;border:1px solid var(--border);border-bottom:none;
 display:flex;flex-direction:column;cursor:grab;user-select:none;
-transition:none;will-change:transform;overflow:hidden}
+transition:none;will-change:transform;overflow-x:hidden;overflow-y:auto;
+-webkit-overflow-scrolling:touch;scroll-behavior:smooth;scrollbar-width:none}
+.bundle-card::-webkit-scrollbar{display:none}
+.bundle-card.scrolled{cursor:default}
 .bundle-card.animating{transition:transform .4s cubic-bezier(.25,.46,.45,.94),opacity .4s ease;pointer-events:none}
 .bundle-card.entering{animation:cardEnter .35s cubic-bezier(.22,1,.36,1) forwards}
 @keyframes cardEnter{from{transform:translateX(var(--enter-from,100px));opacity:0}to{transform:translateX(0);opacity:1}}
 
-.bundle-card-inner{padding:14px 14px 8px;display:flex;flex-direction:column;gap:10px;flex:1;
-justify-content:center}
+.bundle-card-inner{padding:14px 14px 8px;display:flex;flex-direction:column;gap:10px;
+min-height:100%;justify-content:center;flex-shrink:0}
 
 .products-grid{display:flex;gap:8px;justify-content:center}
 .product-slot{width:calc(33.333% - 6px);min-width:85px;max-width:120px;cursor:pointer;
@@ -199,6 +202,43 @@ border-radius:50%;background:rgba(10,10,10,.7);border:1px solid rgba(201,169,110
 display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--accent);
 cursor:pointer;opacity:.7;transition:opacity .2s,background .2s;z-index:2;padding:0;line-height:1}
 .slot-swap-btn:hover,.slot-swap-btn:active{opacity:1;background:rgba(10,10,10,.9)}
+
+.scroll-peek{text-align:center;padding:6px 0 2px;position:relative}
+.scroll-peek::before{content:'';position:absolute;top:-30px;left:0;right:0;height:30px;
+background:linear-gradient(to top,var(--bg-card),transparent);pointer-events:none}
+.scroll-peek-chevron{display:inline-block;color:var(--text-secondary);font-size:.7rem;
+opacity:.5;animation:peekBounce 2s ease-in-out infinite;letter-spacing:.15em}
+@keyframes peekBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(3px)}}
+.scroll-peek-text{font-size:.55rem;color:var(--text-secondary);opacity:.4;
+letter-spacing:.08em;text-transform:uppercase;margin-top:1px}
+
+.bundle-details{padding:0 14px 20px}
+.detail-card{border-top:1px solid var(--border);padding:16px 0}
+.detail-card:first-child{border-top:none}
+.detail-card-slot{font-size:.6rem;color:var(--text-secondary);text-transform:uppercase;
+letter-spacing:.08em;margin-bottom:8px}
+.detail-card-images{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory;
+-webkit-overflow-scrolling:touch;scrollbar-width:none;margin-bottom:12px;padding-bottom:2px}
+.detail-card-images::-webkit-scrollbar{display:none}
+.detail-card-images img{width:70%;max-width:260px;flex-shrink:0;aspect-ratio:3/4;object-fit:cover;
+border-radius:10px;scroll-snap-align:center}
+.detail-card-images .img-placeholder{width:70%;max-width:260px;flex-shrink:0;aspect-ratio:3/4;
+border-radius:10px;background:var(--bg-card-hover);display:flex;align-items:center;
+justify-content:center;color:var(--text-secondary);font-size:.7rem}
+.detail-card-dots{display:flex;gap:4px;justify-content:center;margin-bottom:10px}
+.detail-card-dot{width:5px;height:5px;border-radius:50%;background:var(--border)}
+.detail-card-dot.active{background:var(--accent)}
+.detail-card-vendor{font-size:.7rem;color:var(--accent);text-transform:uppercase;letter-spacing:.08em}
+.detail-card-title{font-family:var(--font-serif);font-size:1.05rem;font-weight:400;color:var(--text);margin:2px 0}
+.detail-card-price{font-size:.9rem;color:var(--accent);font-weight:500;margin-bottom:8px}
+.detail-card-desc{font-size:.78rem;color:var(--text-secondary);line-height:1.5;margin-bottom:10px;
+max-height:60px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
+.detail-card-sizes{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px}
+.detail-card-size{font-size:.7rem;padding:5px 10px;border:1px solid var(--border);border-radius:5px;
+color:var(--text);transition:border-color .15s}
+.detail-card-swap{display:flex;align-items:center;gap:6px;margin-top:6px;cursor:pointer;
+font-size:.7rem;color:var(--text-secondary);transition:color .15s}
+.detail-card-swap:hover{color:var(--accent)}
 
 .context-input-bar{position:absolute;bottom:0;left:0;right:0;
 background:linear-gradient(to top,var(--bg) 80%,transparent);padding:12px 16px 16px;
@@ -769,17 +809,15 @@ function LoadingScreen() {
   );
 }
 
-function ProductSlot({ product, slotKey, isActive, onTap, onSwap }) {
+function ProductSlot({ product, slotKey, isActive, onSwap }) {
   if (!product) return null;
   const slotLabels = { HAUT:'Haut', VESTE:'Veste', BAS:'Bas', CHAUSSURES:'Chaussures', ACCESSOIRE:'Accessoire' };
 
   return (
     <div className={`product-slot ${isActive ? 'active' : ''}`}
-         onClick={(e) => { e.stopPropagation(); onTap(product, slotKey); }}>
+         onClick={(e) => { e.stopPropagation(); onSwap(slotKey); }}>
       <div className="product-img-wrap">
         {getImage(product) && <img src={getImage(product)} alt={product.title} loading="lazy" draggable="false" />}
-        <button className="slot-swap-btn" onClick={(e) => { e.stopPropagation(); onSwap(slotKey); }}
-          title="Changer ce produit">↻</button>
       </div>
       <div className="product-slot-label">{slotLabels[slotKey]}</div>
       <div className="product-slot-brand">{product.vendor}</div>
@@ -939,6 +977,61 @@ function ProductBottomSheet({ product, onClose, shopDomain }) {
   );
 }
 
+function ProductDetailCard({ product, slotKey, onSwap }) {
+  if (!product) return null;
+  const [detail, setDetail] = useState(null);
+  const [activeImg, setActiveImg] = useState(0);
+  const scrollRef = useRef(null);
+  const slotLabels = { HAUT:'Haut', VESTE:'Veste', BAS:'Bas', CHAUSSURES:'Chaussures', ACCESSOIRE:'Accessoire' };
+
+  useEffect(() => {
+    fetchProductDetail(product.handle).then(setDetail);
+  }, [product.handle]);
+
+  const images = detail ? detail.images : [getImage(product, 600)].filter(Boolean);
+  const desc = detail ? detail.description : '';
+  const sizes = getSizes(product);
+  const price = Math.round(getPrice(product));
+
+  const handleImageScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el || images.length <= 1) return;
+    const idx = Math.round(el.scrollLeft / (el.scrollWidth / images.length));
+    setActiveImg(Math.min(idx, images.length - 1));
+  }, [images.length]);
+
+  return (
+    <div className="detail-card">
+      <div className="detail-card-slot">{slotLabels[slotKey]}</div>
+      <div className="detail-card-images" ref={scrollRef} onScroll={handleImageScroll}
+           onTouchStart={e => e.stopPropagation()}>
+        {images.length > 0 ? images.map((url, i) => (
+          <img key={i} src={url} alt={`${product.title} ${i+1}`} loading="lazy" />
+        )) : (
+          <div className="img-placeholder">Chargement...</div>
+        )}
+      </div>
+      {images.length > 1 && (
+        <div className="detail-card-dots">
+          {images.map((_, i) => <div key={i} className={`detail-card-dot ${i === activeImg ? 'active' : ''}`} />)}
+        </div>
+      )}
+      <div className="detail-card-vendor">{product.vendor}</div>
+      <div className="detail-card-title">{product.title}</div>
+      <div className="detail-card-price">{price}€</div>
+      {desc && <div className="detail-card-desc" dangerouslySetInnerHTML={{__html: desc}} />}
+      {sizes.length > 0 && (
+        <div className="detail-card-sizes">
+          {sizes.map((s, i) => <div key={i} className="detail-card-size">{s}</div>)}
+        </div>
+      )}
+      <div className="detail-card-swap" onClick={() => onSwap(slotKey)}>
+        ↻ Changer ce produit
+      </div>
+    </div>
+  );
+}
+
 function NudgeToast({ message, onDone }) {
   const [exiting, setExiting] = useState(false);
   useEffect(() => {
@@ -967,8 +1060,8 @@ function App() {
   const [bundleCount, setBundleCount] = useState(0);
   const [nudge, setNudge] = useState(null);
   const [expanded, setExpanded] = useState(false);
-  const [sheetProduct, setSheetProduct] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isScrolled, setIsScrolled] = useState(false);
   const [showContextInput, setShowContextInput] = useState(false);
   const [contextInput, setContextInput] = useState('');
   const [cartLoading, setCartLoading] = useState(false);
@@ -1036,6 +1129,10 @@ function App() {
         setEnterFrom(direction === 'right' ? -150 : 150);
         setEntering(true);
         setBundleCount(c => c + 1);
+        setActiveSlot(null);
+        setAlternatives(null);
+        setIsScrolled(false);
+        if (cardRef.current) cardRef.current.scrollTop = 0;
 
         setTimeout(() => {
           setEntering(false);
@@ -1055,8 +1152,17 @@ function App() {
   }, [bundleCount]);
 
   // Touch/mouse handlers
+  // Track card scroll position
+  const handleCardScroll = useCallback(() => {
+    const card = cardRef.current;
+    if (card) setIsScrolled(card.scrollTop > 20);
+  }, []);
+
   const handleDragStart = useCallback((clientX, clientY) => {
     if (isAnimating) return;
+    // Don't start swipe when scrolled down into details
+    const card = cardRef.current;
+    if (card && card.scrollTop > 20) return;
     dragRef.current = { startX: clientX, startY: clientY, dragging: true, locked: false, startTime: Date.now() };
   }, [isAnimating]);
 
@@ -1099,13 +1205,7 @@ function App() {
   const onMouseMove = useCallback(e => { if (dragRef.current.dragging) handleDragMove(e.clientX); }, [handleDragMove]);
   const onMouseUp = useCallback(e => handleDragEnd(e.clientX), [handleDragEnd]);
 
-  // Tap → product detail sheet
-  const handleSlotDetail = useCallback((product, slot) => {
-    if (isAnimating || Math.abs(swipeOffset) > 5) return;
-    setSheetProduct(product);
-  }, [isAnimating, swipeOffset]);
-
-  // Swap button → show alternatives
+  // Tap on product → show alternatives to swap
   const handleSlotSwap = useCallback((slot) => {
     if (isAnimating) return;
     if (activeSlot === slot) {
@@ -1185,6 +1285,8 @@ function App() {
     const newBundle = composeBundle(catalog, weather, userSignals, previousBundleRef.current, 'right');
     previousBundleRef.current = newBundle;
     setCurrentBundle(newBundle);
+    if (cardRef.current) cardRef.current.scrollTop = 0;
+    setIsScrolled(false);
     setBundleCount(c => c + 1);
   }, [contextInput, catalog, weather, userSignals, dayName, period, weatherLabel, contextLoading]);
 
@@ -1227,14 +1329,19 @@ function App() {
       </div>
 
       <div className="card-area">
-        <div className={`bundle-card ${isAnimating && !entering ? 'animating' : ''} ${entering ? 'entering' : ''}`}
+        <div className={`bundle-card ${isAnimating && !entering ? 'animating' : ''} ${entering ? 'entering' : ''} ${isScrolled ? 'scrolled' : ''}`}
              style={entering ? {'--enter-from': enterFrom + 'px'} : cardStyle}
              ref={cardRef}
+             onScroll={handleCardScroll}
              onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
              onMouseDown={onMouseDown}>
 
-          <div className="swipe-indicator left" style={{ opacity: leftIndicatorOpacity }}>← Autre chose</div>
-          <div className="swipe-indicator right" style={{ opacity: rightIndicatorOpacity }}>J'aime →</div>
+          {!isScrolled && (
+            <>
+              <div className="swipe-indicator left" style={{ opacity: leftIndicatorOpacity }}>← Autre chose</div>
+              <div className="swipe-indicator right" style={{ opacity: rightIndicatorOpacity }}>J'aime →</div>
+            </>
+          )}
 
           <div className="bundle-card-inner">
             <div className="editorial-note">"{editorial}"</div>
@@ -1243,25 +1350,30 @@ function App() {
               {slotOrder.map(slot => (
                 <ProductSlot key={slot} product={currentBundle.items[slot.toLowerCase()]}
                   slotKey={slot} isActive={activeSlot === slot}
-                  onTap={handleSlotDetail} onSwap={handleSlotSwap} />
+                  onSwap={handleSlotSwap} />
               ))}
             </div>
             <div className="products-grid">
               {row2.map(slot => (
                 <ProductSlot key={slot} product={currentBundle.items[slot.toLowerCase()]}
                   slotKey={slot} isActive={activeSlot === slot}
-                  onTap={handleSlotDetail} onSwap={handleSlotSwap} />
+                  onSwap={handleSlotSwap} />
               ))}
             </div>
 
             <div className="bundle-divider"></div>
 
             <div className="bundle-footer">
-              <div className="bundle-total" onClick={() => setExpanded(true)} style={{cursor:'pointer'}}>
+              <div className="bundle-total">
                 <div className="bundle-total-label">{itemCount} pièces</div>
                 <div className="bundle-total-price">{total}€</div>
               </div>
               <div className="swipe-hint">← SWIPE →</div>
+            </div>
+
+            <div className="scroll-peek">
+              <div className="scroll-peek-chevron">▼ ▼ ▼</div>
+              <div className="scroll-peek-text">Détails des pièces</div>
             </div>
           </div>
 
@@ -1269,6 +1381,16 @@ function App() {
             <AlternativesPanel slot={activeSlot} alternatives={alternatives}
               onSelect={handleAltSelect} onClose={() => { setActiveSlot(null); setAlternatives(null); }} />
           )}
+
+          <div className="bundle-details">
+            {['veste','haut','bas','chaussures','accessoire']
+              .filter(slot => currentBundle.items[slot])
+              .map(slot => (
+                <ProductDetailCard key={slot} product={currentBundle.items[slot]}
+                  slotKey={slot.toUpperCase()} onSwap={handleSlotSwap} />
+              ))
+            }
+          </div>
         </div>
 
         {nudge && <NudgeToast message={nudge} onDone={() => setNudge(null)} />}
@@ -1311,8 +1433,6 @@ function App() {
       </div>
 
       {expanded && <DetailOverlay bundle={currentBundle} onClose={() => setExpanded(false)} />}
-      {sheetProduct && <ProductBottomSheet product={sheetProduct} shopDomain={SHOPIFY_DOMAIN}
-        onClose={() => setSheetProduct(null)} />}
     </div>
   );
 }

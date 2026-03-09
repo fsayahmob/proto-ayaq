@@ -543,6 +543,8 @@ function App(){
   const [feedProfile,setFeedProfile]=useState(null);
   const [feedChatLoading,setFeedChatLoading]=useState(false);
   const [feedExpanded,setFeedExpanded]=useState(null);
+  const [feedCatBoost,setFeedCatBoost]=useState(null);
+  const [feedCardSlide,setFeedCardSlide]=useState({});
   const feedObserverRef=useRef(null);
   const feedTimers=useRef({});
   const observedFeedEls=useRef(new Set());
@@ -564,17 +566,22 @@ function App(){
     return result;
   },[allProducts]);
 
-  /* Score and reorder based on accumulated interests + conversational profile */
+  /* Score and reorder based on accumulated interests + conversational profile + category */
   const getFeedOrder=()=>{
-    if(feedInterests.length===0&&!feedProfile) return defaultFeedOrder;
+    if(feedInterests.length===0&&!feedProfile&&!feedCatBoost) return defaultFeedOrder;
     return allProducts.map(p=>{
       let aff=0;
+      /* Category boost from conversational search */
+      if(feedCatBoost&&p.cat===feedCatBoost) aff+=20;
+      else if(feedCatBoost&&p.cat!==feedCatBoost) aff-=5;
+      /* Implicit interest signals */
       feedInterests.forEach(int=>{
         if(int.brand===p.brand) aff+=3;
         if(int.cat===p.cat) aff+=1;
         if(Math.abs(int.price-p.price)<40) aff+=2;
         if(p.sc&&int.sc) aff+=p.sc.reduce((s,v,i)=>s+v*(int.sc[i]||0),0)/80;
       });
+      /* Profile from Gemini */
       if(feedProfile&&p.sc){
         try{
           const prof=buildProfile(feedProfile.level||"intermediaire",feedProfile.style||"polyvalent",feedProfile.position||"les-deux",feedProfile.freq||"regulier",feedProfile.injury||"aucune");
@@ -676,6 +683,13 @@ function App(){
     const msg=feedChatInput.trim();
     setFeedChatInput("");
     setFeedChatLoading(true);
+    /* Detect product category keywords locally */
+    const lower=msg.toLowerCase();
+    if(lower.match(/chaussur|shoe|sprint|appui|semelle/)) setFeedCatBoost("chaussure");
+    else if(lower.match(/raquette|racket|pala|raq/)) setFeedCatBoost("raquette");
+    else if(lower.match(/access|sac|balle|surgrip|housse|grip|protect/)) setFeedCatBoost("accessoire");
+    else setFeedCatBoost(null);
+    /* Also get player profile from Gemini for scoring */
     const profile=await sendToGemini(msg);
     setFeedChatLoading(false);
     if(profile) setFeedProfile(profile);
@@ -751,39 +765,64 @@ function App(){
             const isInterested=feedInterests.find(x=>x.id===p.id);
             const nudge=feedNudgeMap[p.id];
             const highAffinity=p._affinity>5;
+            const slide=feedCardSlide[p.id]||0;
+            const hasSpecs=!!(p.forme||p.tech);
+            const totalSlides=hasSpecs?3:2;
+            const nextSlide=()=>setFeedCardSlide(prev=>({...prev,[p.id]:((prev[p.id]||0)+1)%totalSlides}));
             return <React.Fragment key={p.id}>
               <div ref={feedCardRef} data-feed-id={p.id} style={{position:"relative",overflow:"hidden",animation:"fadeUp 0.4s ease "+(Math.min(i,6)*0.06)+"s both",...(isInterested?{animation:"dwellGlow 0.6s ease forwards"}:{})}}>
-                <div style={{position:"relative",aspectRatio:"3/4",overflow:"hidden",background:"#f0efeb",cursor:"pointer"}} onClick={()=>setFeedExpanded(feedExpanded===p.id?null:p.id)}>
-                  <img src={p.img} alt={p.name} loading="lazy" onError={e=>{e.target.style.display="none";}} style={{width:"100%",height:"100%",objectFit:"contain",padding:"8%",transition:"transform 0.6s"}} onMouseEnter={e=>e.target.style.transform="scale(1.03)"} onMouseLeave={e=>e.target.style.transform="scale(1)"}/>
-                  <div style={{position:"absolute",top:8,left:8,background:"rgba(10,10,10,0.82)",padding:"4px 10px"}}><span style={{fontFamily:T.bf,fontSize:8,fontWeight:600,letterSpacing:"1.5px",color:T.acc2}}>{p.catLabel}</span></div>
-                  {highAffinity&&<div style={{position:"absolute",top:8,right:8,background:"rgba(232,168,56,0.92)",padding:"4px 10px",animation:"fadeIn 0.4s"}}><span style={{fontFamily:T.bf,fontSize:8,fontWeight:700,color:"#0a0a0a"}}>Pour vous</span></div>}
-                  <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"60px 16px 16px",background:"linear-gradient(transparent,rgba(10,10,10,0.9))"}}>
-                    <div style={{fontFamily:T.bf,fontSize:9,color:T.acc2,marginBottom:4,letterSpacing:"1px"}}>{p.brand}</div>
-                    <div style={{fontFamily:T.df,fontSize:"clamp(20px,4vw,28px)",fontWeight:700,lineHeight:1.15,marginBottom:6}}>{p.name}</div>
-                    <div style={{display:"flex",alignItems:"baseline",gap:10}}>
-                      <span style={{fontFamily:T.bf,fontSize:"clamp(14px,2.5vw,18px)",fontWeight:600}}>{p.price} €</span>
-                      {p.forme&&<span style={{fontFamily:T.bf,fontSize:9,color:T.grey}}>{p.forme} · {p.poids}</span>}
-                    </div>
-                  </div>
-                  {isInterested&&<div style={{position:"absolute",bottom:0,left:0,right:0,height:2,background:T.acc2,animation:"fadeIn 0.5s"}}/>}
-                </div>
+                <div style={{position:"relative",aspectRatio:"3/4",overflow:"hidden",cursor:"pointer"}} onClick={nextSlide}>
 
-                {/* Expanded detail panel */}
-                {feedExpanded===p.id&&<div style={{padding:"16px",background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.06)",animation:"fadeUp 0.2s"}}>
-                  {p.tech&&<div style={{padding:"8px 12px",marginBottom:10,background:"rgba(232,168,56,0.06)",borderLeft:"3px solid "+T.acc2}}>
-                    <div style={{fontFamily:T.bf,fontSize:7,letterSpacing:"2px",textTransform:"uppercase",color:T.acc2,marginBottom:3}}>Technologie</div>
-                    <p style={{fontFamily:T.bf,fontSize:11,color:T.light,lineHeight:1.5}}>{p.tech}</p>
+                  {/* Slide 0: Product image */}
+                  {slide===0&&<div style={{width:"100%",height:"100%",background:"#f0efeb",position:"relative"}}>
+                    <img src={p.img} alt={p.name} loading="lazy" onError={e=>{e.target.style.display="none";}} style={{width:"100%",height:"100%",objectFit:"contain",padding:"8%"}}/>
                   </div>}
-                  {p.why&&<p style={{fontFamily:T.bf,fontSize:11,color:T.grey,lineHeight:1.5,marginBottom:10}}>{p.why}</p>}
-                  {p.forme&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"1px",marginBottom:10,background:"rgba(255,255,255,0.03)"}}>
-                    {[["Forme",p.forme],["Poids",p.poids],["Mousse",p.mousse],["Surface",p.surface],["Balance",p.balance],["Texture",p.texture]].filter(([,v])=>v).map(([k,v])=><div key={k} style={{padding:"6px 8px",background:T.black}}><div style={{fontFamily:T.bf,fontSize:7,letterSpacing:"1px",textTransform:"uppercase",color:T.grey,marginBottom:1}}>{k}</div><div style={{fontFamily:T.bf,fontSize:10,color:T.white}}>{v}</div></div>)}
+
+                  {/* Slide 1: Specs & tech */}
+                  {slide===1&&hasSpecs&&<div style={{width:"100%",height:"100%",background:T.black,display:"flex",flexDirection:"column",justifyContent:"center",padding:"clamp(16px,4vw,32px)",animation:"fadeIn 0.3s"}}>
+                    <div style={{fontFamily:T.bf,fontSize:7,letterSpacing:"3px",textTransform:"uppercase",color:T.acc2,marginBottom:16}}>Fiche technique</div>
+                    {p.forme&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"1px",marginBottom:16,background:"rgba(255,255,255,0.06)"}}>
+                      {[["Forme",p.forme],["Poids",p.poids],["Mousse",p.mousse],["Surface",p.surface],["Balance",p.balance],["Texture",p.texture]].filter(([,v])=>v).map(([k,v])=><div key={k} style={{padding:"10px 12px",background:T.black}}><div style={{fontFamily:T.bf,fontSize:7,letterSpacing:"1.5px",textTransform:"uppercase",color:T.grey,marginBottom:3}}>{k}</div><div style={{fontFamily:T.bf,fontSize:13,color:T.white,fontWeight:500}}>{v}</div></div>)}
+                    </div>}
+                    {p.tech&&<div style={{padding:"10px 14px",background:"rgba(232,168,56,0.06)",borderLeft:"3px solid "+T.acc2}}>
+                      <div style={{fontFamily:T.bf,fontSize:7,letterSpacing:"2px",textTransform:"uppercase",color:T.acc2,marginBottom:4}}>Technologie</div>
+                      <p style={{fontFamily:T.bf,fontSize:12,color:T.light,lineHeight:1.6}}>{p.tech}</p>
+                    </div>}
                   </div>}
-                  <a href={p.url||"#"} target="_blank" rel="noopener noreferrer" style={{display:"block",padding:"12px",background:T.acc2,color:T.black,fontFamily:T.bf,fontSize:10,fontWeight:600,letterSpacing:"1.5px",textTransform:"uppercase",textAlign:"center",textDecoration:"none",transition:"background 0.3s"}} onMouseEnter={e=>e.target.style.background=T.acc} onMouseLeave={e=>e.target.style.background=T.acc2}>Voir sur le site — {p.price}€</a>
-                </div>}
+
+                  {/* Slide 1 (no specs) or Slide 2: Why + CTA */}
+                  {((slide===1&&!hasSpecs)||(slide===2))&&<div style={{width:"100%",height:"100%",background:"linear-gradient(135deg,#1a1200,#0a0a0a)",display:"flex",flexDirection:"column",justifyContent:"center",padding:"clamp(16px,4vw,32px)",animation:"fadeIn 0.3s"}}>
+                    <div style={{fontFamily:T.bf,fontSize:7,letterSpacing:"3px",textTransform:"uppercase",color:T.acc2,marginBottom:16}}>Pourquoi ce produit</div>
+                    {p.why&&<p style={{fontFamily:T.bf,fontSize:13,color:T.light,lineHeight:1.7,marginBottom:20,fontWeight:300}}>{p.why}</p>}
+                    {!p.why&&p.type&&<p style={{fontFamily:T.bf,fontSize:13,color:T.light,lineHeight:1.7,marginBottom:20,fontWeight:300}}>{p.type} — {p.brand} {p.name}. Un choix fiable pour votre pratique.</p>}
+                    <a href={p.url||"#"} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} style={{display:"block",padding:"14px",background:T.acc2,color:T.black,fontFamily:T.bf,fontSize:11,fontWeight:600,letterSpacing:"1.5px",textTransform:"uppercase",textAlign:"center",textDecoration:"none",transition:"background 0.3s"}} onMouseEnter={e=>e.target.style.background=T.acc} onMouseLeave={e=>e.target.style.background=T.acc2}>Voir sur le site — {p.price}€</a>
+                  </div>}
+
+                  {/* Overlay info — always visible */}
+                  {slide===0&&<>
+                    <div style={{position:"absolute",top:8,left:8,background:"rgba(10,10,10,0.82)",padding:"4px 10px"}}><span style={{fontFamily:T.bf,fontSize:8,fontWeight:600,letterSpacing:"1.5px",color:T.acc2}}>{p.catLabel}</span></div>
+                    {highAffinity&&<div style={{position:"absolute",top:8,right:8,background:"rgba(232,168,56,0.92)",padding:"4px 10px",animation:"fadeIn 0.4s"}}><span style={{fontFamily:T.bf,fontSize:8,fontWeight:700,color:"#0a0a0a"}}>Pour vous</span></div>}
+                    <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"60px 16px 16px",background:"linear-gradient(transparent,rgba(10,10,10,0.9))"}}>
+                      <div style={{fontFamily:T.bf,fontSize:9,color:T.acc2,marginBottom:4,letterSpacing:"1px"}}>{p.brand}</div>
+                      <div style={{fontFamily:T.df,fontSize:"clamp(20px,4vw,28px)",fontWeight:700,lineHeight:1.15,marginBottom:6}}>{p.name}</div>
+                      <div style={{display:"flex",alignItems:"baseline",gap:10}}>
+                        <span style={{fontFamily:T.bf,fontSize:"clamp(14px,2.5vw,18px)",fontWeight:600}}>{p.price} €</span>
+                        {p.forme&&<span style={{fontFamily:T.bf,fontSize:9,color:T.grey}}>{p.forme} · {p.poids}</span>}
+                      </div>
+                    </div>
+                  </>}
+
+                  {/* Slide indicator dots */}
+                  <div style={{position:"absolute",bottom:slide===0?56:10,left:"50%",transform:"translateX(-50%)",display:"flex",gap:6,zIndex:5}}>
+                    {Array.from({length:totalSlides}).map((_,si)=><div key={si} style={{width:si===slide?16:6,height:6,borderRadius:3,background:si===slide?T.acc2:"rgba(255,255,255,0.3)",transition:"all 0.3s"}}/>)}
+                  </div>
+
+                  {isInterested&&slide===0&&<div style={{position:"absolute",bottom:0,left:0,right:0,height:2,background:T.acc2,animation:"fadeIn 0.5s"}}/>}
+                </div>
               </div>
 
               {/* AI nudge — appears when interest pattern detected */}
-              {nudge&&!feedExpanded&&<div style={{padding:"12px 16px",background:"rgba(232,168,56,0.04)",borderLeft:"2px solid "+T.acc2,animation:"feedReveal 0.4s ease both",overflow:"hidden"}}>
+              {nudge&&slide===0&&<div style={{padding:"12px 16px",background:"rgba(232,168,56,0.04)",borderLeft:"2px solid "+T.acc2,animation:"feedReveal 0.4s ease both",overflow:"hidden"}}>
                 <p style={{fontFamily:T.bf,fontSize:11,color:T.light,lineHeight:1.5,fontWeight:300}}>{nudge}</p>
               </div>}
             </React.Fragment>;

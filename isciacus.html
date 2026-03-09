@@ -237,6 +237,8 @@ const STOREFRONT_TOKEN = '09f1f52ca2f16b7e1a115cc2d41b1b78';
 const API_VERSION = '2024-01';
 const STOREFRONT_URL = `https://${SHOPIFY_DOMAIN}/api/${API_VERSION}/graphql.json`;
 
+const BUNDLES_JSON_URL = 'data/isciacus-bundles.json';
+
 const SLOT_MAP = {
   HAUT: ["T-Shirt", "Chemises", "Polos", "Sweats", "Pulls"],
   VESTE: ["Vestes", "Surchemises"],
@@ -641,9 +643,17 @@ const BRAND_STYLE_MAP = {
   'THE MERCER BRAND': { styles: ['minimal','elevated'], silhouette: 'regular', formality: 'smart-casual' },
 };
 
-// Update preferences after a swipe
+// Update preferences after a swipe — fractional credit assignment
 function updatePreferences(prefs, bundleAxes, direction) {
-  const credit = 1.0; // Could be weighted by engagement depth
+  // Count total axis-value pairs to normalize credit
+  // Each swipe injects exactly 1.0 total information, split across all axes
+  let totalPairs = 0;
+  for (const [axis, values] of Object.entries(bundleAxes)) {
+    totalPairs += values.length;
+  }
+  if (totalPairs === 0) return prefs;
+  const credit = 1.0 / totalPairs;
+
   for (const [axis, values] of Object.entries(bundleAxes)) {
     if (!prefs[axis]) continue;
     for (const v of values) {
@@ -659,15 +669,15 @@ function updatePreferences(prefs, bundleAxes, direction) {
 }
 
 // Score a product based on current preference distributions (Thompson Sampling)
+// Fixed: one sample per axis (not per style), avoids double-counting multi-style brands
 function thompsonScore(product, prefs) {
   let score = 0;
-  let axes = 0;
+  const axisCount = 5; // Always normalize by 5 axes for fair comparison
 
   // Color
   const color = product._colorFamily || 'NOIR';
   if (prefs.color[color]) {
     score += sampleBeta(prefs.color[color].alpha, prefs.color[color].beta);
-    axes++;
   }
 
   // Price range
@@ -675,30 +685,31 @@ function thompsonScore(product, prefs) {
   const range = price < 100 ? 'budget' : price > 200 ? 'premium' : 'mid';
   if (prefs.priceRange[range]) {
     score += sampleBeta(prefs.priceRange[range].alpha, prefs.priceRange[range].beta);
-    axes++;
   }
 
   // Style + silhouette + formality from brand
   const vendor = product.vendor?.toUpperCase();
   const brandMeta = BRAND_STYLE_MAP[vendor];
   if (brandMeta) {
-    for (const s of brandMeta.styles) {
-      if (prefs.style[s]) {
-        score += sampleBeta(prefs.style[s].alpha, prefs.style[s].beta);
-        axes++;
+    // Style: take MAX sample across brand's styles (not sum) — fixes multi-style double-count
+    if (brandMeta.styles.length > 0) {
+      let bestStyle = 0;
+      for (const s of brandMeta.styles) {
+        if (prefs.style[s]) {
+          bestStyle = Math.max(bestStyle, sampleBeta(prefs.style[s].alpha, prefs.style[s].beta));
+        }
       }
+      score += bestStyle;
     }
     if (prefs.silhouette[brandMeta.silhouette]) {
       score += sampleBeta(prefs.silhouette[brandMeta.silhouette].alpha, prefs.silhouette[brandMeta.silhouette].beta);
-      axes++;
     }
     if (prefs.formality[brandMeta.formality]) {
       score += sampleBeta(prefs.formality[brandMeta.formality].alpha, prefs.formality[brandMeta.formality].beta);
-      axes++;
     }
   }
 
-  return axes > 0 ? score / axes : 0.5; // Normalize to [0,1]
+  return score / axisCount;
 }
 
 // Pick from pool using Thompson Sampling scores + color coherence
@@ -850,6 +861,176 @@ function composeBundle(catalog, weather, signals, previousBundle, direction) {
   }
 
   return { items, timestamp: Date.now() };
+}
+
+// ─── RAG Bundle Selection (pre-curated bundles from JSON) ───────────
+async function fetchBundlesRAG() {
+  try {
+    const res = await fetch(BUNDLES_JSON_URL);
+    if (!res.ok) throw new Error('Failed to load bundles JSON');
+    return await res.json();
+  } catch (e) {
+    console.warn('[RAG] Could not load bundles:', e.message);
+    return null;
+  }
+}
+
+// Build handle→product map from Shopify catalog for quick lookup
+function buildProductMap(products) {
+  const map = {};
+  for (const p of products) {
+    map[p.handle] = p;
+  }
+  return map;
+}
+
+// Score a RAG bundle using Thompson Sampling on its pre-tagged axes
+function scoreRAGBundle(ragBundle, prefs) {
+  let score = 0;
+  let axes = 0;
+
+  // Style
+  if (ragBundle.style && prefs.style[ragBundle.style]) {
+    score += sampleBeta(prefs.style[ragBundle.style].alpha, prefs.style[ragBundle.style].beta);
+    axes++;
+  }
+
+  // Silhouette
+  if (ragBundle.silhouette && prefs.silhouette[ragBundle.silhouette]) {
+    score += sampleBeta(prefs.silhouette[ragBundle.silhouette].alpha, prefs.silhouette[ragBundle.silhouette].beta);
+    axes++;
+  }
+
+  // Formality
+  if (ragBundle.formality && prefs.formality[ragBundle.formality]) {
+    score += sampleBeta(prefs.formality[ragBundle.formality].alpha, prefs.formality[ragBundle.formality].beta);
+    axes++;
+  }
+
+  // Colors from items (average across all item colors)
+  const allColors = [];
+  for (const item of Object.values(ragBundle.items)) {
+    if (item && item.colors) allColors.push(...item.colors);
+  }
+  for (const c of [...new Set(allColors)]) {
+    if (prefs.color[c]) {
+      score += sampleBeta(prefs.color[c].alpha, prefs.color[c].beta);
+      axes++;
+    }
+  }
+
+  // Price range from total
+  const total = ragBundle.total || 0;
+  const avgPrice = total / Math.max(1, Object.keys(ragBundle.items).length);
+  const range = avgPrice < 100 ? 'budget' : avgPrice > 200 ? 'premium' : 'mid';
+  if (prefs.priceRange[range]) {
+    score += sampleBeta(prefs.priceRange[range].alpha, prefs.priceRange[range].beta);
+    axes++;
+  }
+
+  return axes > 0 ? score / axes : 0.5;
+}
+
+// Determine current season from weather
+function currentSeason(temp) {
+  if (temp > 22) return 'ete';
+  if (temp < 10) return 'hiver';
+  return 'mi-saison';
+}
+
+// Select best bundle from RAG using Thompson Sampling
+function selectRAGBundle(ragData, productMap, weather, prefs, seenBundleIndices, direction) {
+  if (!ragData || !ragData.bundles || ragData.bundles.length === 0) return null;
+
+  const season = currentSeason(weather.temp);
+  const now = new Date();
+  const hour = now.getHours();
+  const isWeekend = now.getDay() === 0 || now.getDay() === 6;
+
+  // Filter bundles by season compatibility
+  const candidates = ragData.bundles.map((b, idx) => ({ bundle: b, idx }))
+    .filter(({ bundle, idx }) => {
+      // Skip already seen
+      if (seenBundleIndices.has(idx)) return false;
+      // Season match (toute-saison always matches)
+      if (bundle.season !== season && bundle.season !== 'toute-saison') return false;
+      // Check items can be resolved to real products
+      const resolved = resolveRAGItems(bundle.items, productMap);
+      if (Object.values(resolved).filter(Boolean).length < 2) return false;
+      return true;
+    });
+
+  if (candidates.length === 0) {
+    // Reset seen bundles if we've exhausted them all
+    seenBundleIndices.clear();
+    return selectRAGBundle(ragData, productMap, weather, prefs, seenBundleIndices, direction);
+  }
+
+  // Contextual occasion bonus
+  let preferOccasion = isWeekend ? 'weekend' : (hour >= 18 ? 'sortie' : 'bureau-casual');
+
+  // Score each candidate
+  const scored = candidates.map(({ bundle, idx }) => {
+    let score = scoreRAGBundle(bundle, prefs) * 8;
+    // Occasion bonus
+    if (bundle.occasion === preferOccasion) score += 2;
+    // Variety bonus for less common styles after many swipes
+    return { bundle, idx, score: Math.max(0.1, score) };
+  });
+
+  // Weighted random selection (Thompson Sampling style)
+  const total = scored.reduce((s, x) => s + x.score, 0);
+  let r = Math.random() * total;
+  for (const item of scored) {
+    r -= item.score;
+    if (r <= 0) return item;
+  }
+  return scored[scored.length - 1];
+}
+
+// Resolve RAG item handles to full Shopify product objects
+function resolveRAGItems(ragItems, productMap) {
+  const resolved = {};
+  for (const [slot, item] of Object.entries(ragItems)) {
+    if (item && item.handle && productMap[item.handle]) {
+      const p = productMap[item.handle];
+      // Attach color family if not set
+      if (!p._colorFamily) p._colorFamily = extractColorFamily(p);
+      resolved[slot] = p;
+    }
+  }
+  return resolved;
+}
+
+// Resolve RAG alternatives to full Shopify product objects
+function resolveRAGAlternatives(ragAlts, productMap) {
+  if (!ragAlts) return {};
+  const resolved = {};
+  for (const [slot, alts] of Object.entries(ragAlts)) {
+    resolved[slot.toUpperCase()] = (alts || [])
+      .map(a => a.handle ? productMap[a.handle] : null)
+      .filter(Boolean);
+  }
+  return resolved;
+}
+
+// Extract Thompson axes from a RAG bundle (using pre-tagged data)
+function extractRAGBundleAxes(ragBundle) {
+  const axes = { style: [], color: [], silhouette: [], formality: [], priceRange: [] };
+  if (ragBundle.style) axes.style.push(ragBundle.style);
+  if (ragBundle.silhouette) axes.silhouette.push(ragBundle.silhouette);
+  if (ragBundle.formality) axes.formality.push(ragBundle.formality);
+  for (const item of Object.values(ragBundle.items)) {
+    if (item && item.colors) {
+      for (const c of item.colors) {
+        if (!axes.color.includes(c)) axes.color.push(c);
+      }
+    }
+  }
+  const total = ragBundle.total || 0;
+  const avgPrice = total / Math.max(1, Object.keys(ragBundle.items).length);
+  axes.priceRange.push(avgPrice < 100 ? 'budget' : avgPrice > 200 ? 'premium' : 'mid');
+  return axes;
 }
 
 function getPrice(p) {
@@ -1182,18 +1363,48 @@ function App() {
   const dragRef = useRef({ startX: 0, startY: 0, dragging: false, startTime: 0 });
   const cardRef = useRef(null);
   const previousBundleRef = useRef(null);
+  // RAG state
+  const ragDataRef = useRef(null);
+  const productMapRef = useRef({});
+  const seenBundlesRef = useRef(new Set());
+  const currentRAGBundleRef = useRef(null); // Tracks the current RAG bundle for alternatives
+  const ragAlternativesRef = useRef({}); // Resolved alternatives for current bundle
 
   // Init
   useEffect(() => {
     (async () => {
-      const [products, w] = await Promise.all([fetchAllProducts(), fetchWeather()]);
+      const [products, w, ragJson] = await Promise.all([
+        fetchAllProducts(), fetchWeather(), fetchBundlesRAG()
+      ]);
       const cat = categorizeProducts(products);
       setCatalog(cat);
       setWeather(w);
-      const bundle = composeBundle(cat, w, userSignals, null, 'right');
+
+      // Build handle→product map
+      const pMap = buildProductMap(products);
+      productMapRef.current = pMap;
+
+      // Try RAG bundle first, fallback to composeBundle
+      let bundle = null;
+      if (ragJson && ragJson.bundles && ragJson.bundles.length > 0) {
+        ragDataRef.current = ragJson;
+        const selected = selectRAGBundle(ragJson, pMap, w, userSignals.preferences, seenBundlesRef.current, 'right');
+        if (selected) {
+          const resolvedItems = resolveRAGItems(selected.bundle.items, pMap);
+          seenBundlesRef.current.add(selected.idx);
+          currentRAGBundleRef.current = selected.bundle;
+          ragAlternativesRef.current = resolveRAGAlternatives(selected.bundle.alternatives, pMap);
+          bundle = { items: resolvedItems, timestamp: Date.now(), editorial: selected.bundle.editorial };
+        }
+      }
+      if (!bundle) {
+        bundle = composeBundle(cat, w, userSignals, null, 'right');
+      }
+
       setCurrentBundle(bundle);
       previousBundleRef.current = bundle;
       setLoading(false);
+      console.log('[RAG] Loaded', ragJson ? ragJson.bundles.length : 0, 'pre-curated bundles');
     })();
   }, []);
 
@@ -1221,8 +1432,10 @@ function App() {
       }
       if (currentBundle) {
         const entry = { items: currentBundle.items, timestamp: Date.now() };
-        // Update Thompson Sampling distributions
-        const bundleAxes = extractBundleAxes(currentBundle);
+        // Update Thompson Sampling distributions — use RAG tags if available, else extract from brand
+        const bundleAxes = currentRAGBundleRef.current
+          ? extractRAGBundleAxes(currentRAGBundleRef.current)
+          : extractBundleAxes(currentBundle);
         updatePreferences(next.preferences, bundleAxes, direction);
 
         if (direction === 'right') {
@@ -1246,7 +1459,32 @@ function App() {
 
     setTimeout(() => {
       setUserSignals(currentSignals => {
-        const newBundle = composeBundle(catalog, weather, currentSignals, previousBundleRef.current, direction);
+        let newBundle = null;
+
+        // Try RAG bundle selection first
+        if (ragDataRef.current && productMapRef.current) {
+          const selected = selectRAGBundle(
+            ragDataRef.current, productMapRef.current, weather,
+            currentSignals.preferences, seenBundlesRef.current, direction
+          );
+          if (selected) {
+            const resolvedItems = resolveRAGItems(selected.bundle.items, productMapRef.current);
+            if (Object.values(resolvedItems).filter(Boolean).length >= 2) {
+              seenBundlesRef.current.add(selected.idx);
+              currentRAGBundleRef.current = selected.bundle;
+              ragAlternativesRef.current = resolveRAGAlternatives(selected.bundle.alternatives, productMapRef.current);
+              newBundle = { items: resolvedItems, timestamp: Date.now(), editorial: selected.bundle.editorial };
+            }
+          }
+        }
+
+        // Fallback to dynamic composition
+        if (!newBundle) {
+          currentRAGBundleRef.current = null;
+          ragAlternativesRef.current = {};
+          newBundle = composeBundle(catalog, weather, currentSignals, previousBundleRef.current, direction);
+        }
+
         previousBundleRef.current = newBundle;
         setCurrentBundle(newBundle);
         setSwipeOffset(0);
@@ -1329,7 +1567,7 @@ function App() {
   const onMouseMove = useCallback(e => { if (dragRef.current.dragging) handleDragMove(e.clientX); }, [handleDragMove]);
   const onMouseUp = useCallback(e => handleDragEnd(e.clientX), [handleDragEnd]);
 
-  // Tap on product → show alternatives to swap
+  // Tap on product → show alternatives to swap (RAG alternatives first, then random)
   const handleSlotSwap = useCallback((slot) => {
     if (isAnimating) return;
     if (activeSlot === slot) {
@@ -1342,6 +1580,19 @@ function App() {
       ...prev,
       tappedSlots: [...prev.tappedSlots, slot]
     }));
+
+    // Try RAG alternatives first (pre-curated, style-coherent)
+    const ragAlts = ragAlternativesRef.current[slot];
+    if (ragAlts && ragAlts.length > 0) {
+      const current = currentBundle.items[slot.toLowerCase()];
+      const filtered = ragAlts.filter(p => !current || p.handle !== current.handle).slice(0, 3);
+      if (filtered.length > 0) {
+        setAlternatives(filtered);
+        return;
+      }
+    }
+
+    // Fallback: random from catalog
     const pool = catalog[slot] || [];
     const current = currentBundle.items[slot.toLowerCase()];
     const alts = pool.filter(p => !current || p.handle !== current.handle)
@@ -1404,8 +1655,28 @@ function App() {
     }
     setContextLoading(false);
     setContextInput('');
-    // Recompose bundle
-    const newBundle = composeBundle(catalog, weather, userSignals, previousBundleRef.current, 'right');
+    // Recompose bundle — try RAG first
+    let newBundle = null;
+    if (ragDataRef.current && productMapRef.current) {
+      const selected = selectRAGBundle(
+        ragDataRef.current, productMapRef.current, weather,
+        userSignals.preferences, seenBundlesRef.current, 'right'
+      );
+      if (selected) {
+        const resolvedItems = resolveRAGItems(selected.bundle.items, productMapRef.current);
+        if (Object.values(resolvedItems).filter(Boolean).length >= 2) {
+          seenBundlesRef.current.add(selected.idx);
+          currentRAGBundleRef.current = selected.bundle;
+          ragAlternativesRef.current = resolveRAGAlternatives(selected.bundle.alternatives, productMapRef.current);
+          newBundle = { items: resolvedItems, timestamp: Date.now(), editorial: selected.bundle.editorial };
+        }
+      }
+    }
+    if (!newBundle) {
+      currentRAGBundleRef.current = null;
+      ragAlternativesRef.current = {};
+      newBundle = composeBundle(catalog, weather, userSignals, previousBundleRef.current, 'right');
+    }
     previousBundleRef.current = newBundle;
     setCurrentBundle(newBundle);
     if (cardRef.current) cardRef.current.scrollTop = 0;
@@ -1424,7 +1695,8 @@ function App() {
   };
 
   const total = Math.round(bundleTotal(currentBundle));
-  const editorial = generateEditorial(currentBundle, weather, style);
+  // Use RAG editorial if available, otherwise generate dynamically
+  const editorial = currentBundle.editorial || generateEditorial(currentBundle, weather, style);
 
   const slotOrder = [];
   if (currentBundle.items.veste) slotOrder.push('VESTE');
@@ -1442,7 +1714,9 @@ function App() {
          onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
       <div className="context-bar">
         <div className="context-left">
-          <div className="logo">ISCIACUS</div>
+          <a href="recherche-concurrentielle-configurateurs-ia.tex" target="_blank"
+            title="TSMA Research Paper (LaTeX)"
+            style={{textDecoration:'none',color:'inherit'}}><div className="logo">ISCIACUS</div></a>
           <div className="context-line">{dayName} {period} · {weather.temp}° · Paris</div>
           <div className="context-weather">{weatherLabel}</div>
         </div>

@@ -547,9 +547,6 @@ function App(){
   const [feedExpanded,setFeedExpanded]=useState(null);
   const [feedCatBoost,setFeedCatBoost]=useState(null);
   const [lockedFeedOrder,setLockedFeedOrder]=useState(null);
-  const feedObserverRef=useRef(null);
-  const feedTimers=useRef({});
-  const observedFeedEls=useRef(new Set());
 
   const allProducts=useMemo(()=>[
     ...P.raquette.map(p=>({...p,cat:"raquette",catLabel:"RAQUETTE"})),
@@ -568,28 +565,37 @@ function App(){
     return result;
   },[allProducts]);
 
-  /* Score and reorder — only called explicitly (on chat submit), never on passive dwell */
-  const computeFeedOrder=()=>{
-    if(feedInterests.length===0&&!feedProfile&&!feedCatBoost) return defaultFeedOrder;
-    return allProducts.map(p=>{
+  /* Score products by affinity to interests + profile */
+  const scoreAllProducts=(products,interests,profile,catBoost)=>{
+    return products.map(p=>{
       let aff=0;
-      if(feedCatBoost&&p.cat===feedCatBoost) aff+=20;
-      else if(feedCatBoost&&p.cat!==feedCatBoost) aff-=5;
-      feedInterests.forEach(int=>{
+      if(catBoost&&p.cat===catBoost) aff+=20;
+      else if(catBoost&&p.cat!==catBoost) aff-=5;
+      interests.forEach(int=>{
         if(int.brand===p.brand) aff+=3;
         if(int.cat===p.cat) aff+=1;
         if(Math.abs(int.price-p.price)<40) aff+=2;
         if(p.sc&&int.sc) aff+=p.sc.reduce((s,v,i)=>s+v*(int.sc[i]||0),0)/80;
       });
-      if(feedProfile&&p.sc){
+      if(profile&&p.sc){
         try{
-          const prof=buildProfile(feedProfile.level||"intermediaire",feedProfile.style||"polyvalent",feedProfile.position||"les-deux",feedProfile.freq||"regulier",feedProfile.injury||"aucune");
-          aff+=scoreProduct(p,prof,feedProfile.level||"intermediaire")*2;
+          const prof=buildProfile(profile.level||"intermediaire",profile.style||"polyvalent",profile.position||"les-deux",profile.freq||"regulier",profile.injury||"aucune");
+          aff+=scoreProduct(p,prof,profile.level||"intermediaire")*2;
         }catch(e){}
       }
       return{...p,_affinity:aff};
-    }).sort((a,b)=>b._affinity-a._affinity);
+    });
   };
+
+  /* Reorder: freeze items above tapped card, sort only items below by affinity */
+  const reorderBelowIndex=(currentOrder,fromIndex,interests,profile,catBoost)=>{
+    const frozen=currentOrder.slice(0,fromIndex+1);
+    const tail=currentOrder.slice(fromIndex+1);
+    const scored=scoreAllProducts(tail,interests,profile,catBoost);
+    scored.sort((a,b)=>b._affinity-a._affinity);
+    return[...frozen,...scored];
+  };
+
   const getFeedOrder=()=>lockedFeedOrder||defaultFeedOrder;
 
   /* Generate contextual nudge for a product based on browsing interests */
@@ -607,59 +613,25 @@ function App(){
     return null;
   };
 
-  /* Lazy-init IntersectionObserver (avoids timing issue with callback refs) */
-  const getOrCreateObserver=()=>{
-    if(!feedObserverRef.current){
-      feedObserverRef.current=new IntersectionObserver((entries)=>{
-        entries.forEach(entry=>{
-          const id=entry.target.dataset.feedId;
-          if(!id) return;
-          if(entry.isIntersecting){
-            feedTimers.current[id]={...(feedTimers.current[id]||{total:0,triggered:false}),start:Date.now()};
-          }else if(feedTimers.current[id]?.start){
-            const elapsed=Date.now()-feedTimers.current[id].start;
-            feedTimers.current[id].total+=elapsed;
-            feedTimers.current[id].start=null;
-          }
-        });
-      },{threshold:0.4});
-    }
-    return feedObserverRef.current;
+  /* On tap (expand card) → register interest + reorder items BELOW */
+  const onCardTap=(product,cardIndex)=>{
+    setFeedExpanded(prev=>prev===product.id?null:product.id);
+    /* Only register interest on open, not close */
+    if(feedExpanded===product.id) return;
+    setFeedInterests(prev=>{
+      if(prev.find(x=>x.id===product.id)) return prev;
+      return[...prev,{id:product.id,brand:product.brand,price:product.price,cat:product.cat,name:product.name,sc:product.sc}];
+    });
+    /* Reorder only products below this one */
+    const currentOrder=lockedFeedOrder||defaultFeedOrder;
+    const newInterests=[...feedInterests.filter(x=>x.id!==product.id),{id:product.id,brand:product.brand,price:product.price,cat:product.cat,name:product.name,sc:product.sc}];
+    const frozen=currentOrder.slice(0,cardIndex+1);
+    const tail=currentOrder.slice(cardIndex+1);
+    const scored=scoreAllProducts(tail,newInterests,feedProfile,feedCatBoost);
+    scored.sort((a,b)=>b._affinity-a._affinity);
+    setLockedFeedOrder([...frozen,...scored]);
   };
 
-  /* Cleanup observer on unmount */
-  useEffect(()=>()=>feedObserverRef.current?.disconnect(),[]);
-
-  /* Periodic check: detect 3s+ dwell on VISIBLE products (not just on leave) */
-  useEffect(()=>{
-    const interval=setInterval(()=>{
-      let changed=false;
-      Object.entries(feedTimers.current).forEach(([id,timer])=>{
-        if(timer.triggered) return;
-        const elapsed=timer.total+(timer.start?Date.now()-timer.start:0);
-        if(elapsed>=3000){
-          timer.triggered=true;
-          changed=true;
-          const product=allProducts.find(p=>p.id===id);
-          if(product){
-            setFeedInterests(prev=>{
-              if(prev.find(x=>x.id===id)) return prev;
-              return[...prev,{id,brand:product.brand,price:product.price,cat:product.cat,name:product.name,sc:product.sc}];
-            });
-          }
-        }
-      });
-    },1000);
-    return()=>clearInterval(interval);
-  },[allProducts]);
-
-  /* Callback ref to observe feed cards — uses lazy observer */
-  const feedCardRef=useCallback((el)=>{
-    if(el&&!observedFeedEls.current.has(el)){
-      getOrCreateObserver().observe(el);
-      observedFeedEls.current.add(el);
-    }
-  },[]);
 
   /* Update nudge map when interests change */
   useEffect(()=>{
@@ -677,9 +649,14 @@ function App(){
     if(feedProfile) document.getElementById("attentional-feed")?.scrollIntoView({behavior:"smooth"});
   },[feedProfile]);
 
-  /* Recompute feed order only on explicit chat actions (profile/catBoost change) — never on dwell */
+  /* Recompute full feed order on chat actions (profile/catBoost) */
   useEffect(()=>{
-    if(feedProfile||feedCatBoost) setLockedFeedOrder(computeFeedOrder());
+    if(feedProfile||feedCatBoost){
+      const base=lockedFeedOrder||defaultFeedOrder;
+      const scored=scoreAllProducts(base,feedInterests,feedProfile,feedCatBoost);
+      scored.sort((a,b)=>b._affinity-a._affinity);
+      setLockedFeedOrder(scored);
+    }
   },[feedProfile,feedCatBoost]);
 
   /* Handle conversational input in the feed */
@@ -772,10 +749,9 @@ function App(){
             const highAffinity=p._affinity>5;
             const hasSpecs=!!(p.forme||p.tech);
             const isOpen=feedExpanded===p.id;
-            const toggleCard=(e)=>{e.preventDefault();setFeedExpanded(isOpen?null:p.id);};
             return <div key={p.id} style={{animation:"fadeUp 0.4s ease "+(Math.min(i,6)*0.06)+"s both"}}>
               {/* Card with tap-to-expand overlay */}
-              <div ref={feedCardRef} data-feed-id={p.id} onClick={toggleCard} style={{position:"relative",overflow:"hidden",aspectRatio:"3/4",cursor:"pointer",...(isInterested?{animation:"dwellGlow 0.6s ease forwards"}:{})}}>
+              <div data-feed-id={p.id} onClick={(e)=>{e.preventDefault();onCardTap(p,i);}} style={{position:"relative",overflow:"hidden",aspectRatio:"3/4",cursor:"pointer",...(isInterested?{animation:"dwellGlow 0.6s ease forwards"}:{})}}>
                 <img src={p.img} alt={p.name} loading="lazy" onError={e=>{e.target.style.display="none";}} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
                 <div style={{position:"absolute",top:8,left:8,background:"rgba(10,10,10,0.82)",padding:"4px 10px",zIndex:3}}><span style={{fontFamily:T.bf,fontSize:8,fontWeight:600,letterSpacing:"1.5px",color:T.acc2}}>{p.catLabel}</span></div>
                 {highAffinity&&<div style={{position:"absolute",top:8,right:8,background:"rgba(232,168,56,0.92)",padding:"4px 10px",zIndex:3,animation:"fadeIn 0.4s"}}><span style={{fontFamily:T.bf,fontSize:8,fontWeight:700,color:"#0a0a0a"}}>Pour vous</span></div>}

@@ -110,13 +110,13 @@ display:flex;align-items:center;justify-content:center;transition:border-color .
 
 .swipe-indicator{position:absolute;top:50%;transform:translateY(-50%);
 font-family:var(--font-serif);font-size:1.1rem;font-weight:500;
-pointer-events:none;opacity:0;transition:opacity .15s}
-.swipe-indicator.left{left:20px;color:var(--reject)}
-.swipe-indicator.right{right:20px;color:var(--success)}
+pointer-events:none;opacity:0;transition:opacity .15s;z-index:25}
+.swipe-indicator.left{left:8px;color:var(--reject)}
+.swipe-indicator.right{right:8px;color:var(--success)}
 
-.alternatives-panel{position:absolute;bottom:0;left:0;right:0;
+.alternatives-panel{position:sticky;bottom:0;left:0;right:0;
 background:linear-gradient(to top,var(--bg-card) 90%,transparent);
-padding:16px;border-radius:0 0 16px 16px;animation:slideUp .25s ease forwards;z-index:5}
+padding:16px;animation:slideUp .25s ease forwards;z-index:5}
 .alternatives-title{font-size:.7rem;color:var(--text-secondary);text-transform:uppercase;
 letter-spacing:.08em;margin-bottom:10px;text-align:center}
 .alternatives-row{display:flex;gap:10px;justify-content:center}
@@ -162,41 +162,6 @@ text-underline-offset:2px;margin-top:4px;display:inline-block}
 .detail-total{text-align:center;padding:20px 0;border-top:1px solid var(--border);margin-top:8px}
 .detail-total span{font-family:var(--font-serif);font-size:1.4rem;color:var(--accent)}
 
-.bottom-sheet-backdrop{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);
-z-index:40;animation:fadeIn .2s ease}
-.bottom-sheet{position:fixed;left:0;right:0;bottom:0;max-height:65vh;
-background:var(--bg-card);border-radius:16px 16px 0 0;border-top:1px solid var(--border);
-z-index:41;animation:sheetUp .3s cubic-bezier(.22,1,.36,1) forwards;
-overflow-y:auto;-webkit-overflow-scrolling:touch}
-.bottom-sheet.closing{animation:sheetDown .25s ease forwards}
-@keyframes sheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
-@keyframes sheetDown{from{transform:translateY(0)}to{transform:translateY(100%)}}
-.sheet-handle{width:36px;height:4px;background:var(--text-secondary);border-radius:2px;
-margin:10px auto 6px;opacity:.4}
-.sheet-images{display:flex;gap:8px;padding:0 16px 12px;overflow-x:auto;scroll-snap-type:x mandatory;
--webkit-overflow-scrolling:touch;scrollbar-width:none}
-.sheet-images::-webkit-scrollbar{display:none}
-.sheet-images img{width:75%;max-width:280px;flex-shrink:0;aspect-ratio:3/4;object-fit:cover;
-border-radius:10px;scroll-snap-align:center}
-.sheet-info{padding:0 20px 20px}
-.sheet-vendor{font-size:.7rem;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
-.sheet-title{font-family:var(--font-serif);font-size:1.2rem;font-weight:400;color:var(--text);margin-bottom:4px}
-.sheet-price{font-size:1rem;color:var(--accent);font-weight:500;margin-bottom:12px}
-.sheet-desc{font-size:.8rem;color:var(--text-secondary);line-height:1.5;margin-bottom:14px;
-max-height:80px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical}
-.sheet-sizes-label{font-size:.65rem;color:var(--text-secondary);text-transform:uppercase;
-letter-spacing:.06em;margin-bottom:6px}
-.sheet-sizes{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
-.sheet-size{font-size:.75rem;padding:6px 12px;border:1px solid var(--border);border-radius:6px;
-color:var(--text);cursor:pointer;transition:border-color .15s,background .15s}
-.sheet-size:hover{border-color:var(--accent);background:var(--accent-soft)}
-.sheet-actions{display:flex;gap:8px}
-.sheet-btn{flex:1;padding:12px;border-radius:8px;font-family:var(--font-sans);font-size:.8rem;
-font-weight:500;cursor:pointer;text-align:center;transition:background .2s,color .2s}
-.sheet-btn-primary{background:var(--accent);color:var(--bg);border:none}
-.sheet-btn-secondary{background:transparent;color:var(--accent);border:1px solid var(--accent)}
-.sheet-btn-primary:hover{opacity:.9}
-.sheet-btn-secondary:hover{background:var(--accent-soft)}
 .slot-swap-btn{position:absolute;bottom:4px;right:4px;width:22px;height:22px;
 border-radius:50%;background:rgba(10,10,10,.7);border:1px solid rgba(201,169,110,.4);
 display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--accent);
@@ -908,73 +873,7 @@ async function fetchProductDetail(handle) {
       };
     }
   } catch (e) { console.warn('[Detail] fetch error:', e.message); }
-  return { description: '', images: getAllImages(product) };
-}
-
-function ProductBottomSheet({ product, onClose, shopDomain }) {
-  const [closing, setClosing] = useState(false);
-  const [detail, setDetail] = useState(null);
-  const sizes = getSizes(product);
-  const price = Math.round(getPrice(product));
-
-  useEffect(() => {
-    fetchProductDetail(product.handle).then(setDetail);
-  }, [product.handle]);
-
-  const images = detail ? detail.images : [getImage(product, 600)].filter(Boolean);
-  const desc = detail ? detail.description : '';
-
-  const dismiss = useCallback(() => {
-    setClosing(true);
-    setTimeout(onClose, 250);
-  }, [onClose]);
-
-  // Swipe-down to dismiss
-  const sheetDragRef = useRef({ startY: 0, dragging: false });
-  const handleSheetTouchStart = (e) => {
-    sheetDragRef.current = { startY: e.touches[0].clientY, dragging: true };
-  };
-  const handleSheetTouchEnd = (e) => {
-    if (!sheetDragRef.current.dragging) return;
-    const dy = e.changedTouches[0].clientY - sheetDragRef.current.startY;
-    if (dy > 80) dismiss();
-    sheetDragRef.current.dragging = false;
-  };
-
-  return (
-    <>
-      <div className="bottom-sheet-backdrop" onClick={dismiss} />
-      <div className={`bottom-sheet ${closing ? 'closing' : ''}`}
-           onTouchStart={handleSheetTouchStart} onTouchEnd={handleSheetTouchEnd}>
-        <div className="sheet-handle" />
-        {images.length > 0 && (
-          <div className="sheet-images">
-            {images.map((url, i) => <img key={i} src={url} alt={`${product.title} ${i+1}`} />)}
-          </div>
-        )}
-        <div className="sheet-info">
-          <div className="sheet-vendor">{product.vendor}</div>
-          <div className="sheet-title">{product.title}</div>
-          <div className="sheet-price">{price}€</div>
-          {desc && <div className="sheet-desc">{desc}</div>}
-          {sizes.length > 0 && (
-            <>
-              <div className="sheet-sizes-label">Tailles disponibles</div>
-              <div className="sheet-sizes">
-                {sizes.map((s, i) => <div key={i} className="sheet-size">{s}</div>)}
-              </div>
-            </>
-          )}
-          <div className="sheet-actions">
-            <a className="sheet-btn sheet-btn-primary"
-               href={`https://${shopDomain}/products/${product.handle}`}
-               target="_blank" rel="noopener">Voir sur le shop</a>
-            <button className="sheet-btn sheet-btn-secondary" onClick={dismiss}>Fermer</button>
-          </div>
-        </div>
-      </div>
-    </>
-  );
+  return { description: '', images: [] };
 }
 
 function ProductDetailCard({ product, slotKey, onSwap }) {
@@ -1336,13 +1235,6 @@ function App() {
              onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
              onMouseDown={onMouseDown}>
 
-          {!isScrolled && (
-            <>
-              <div className="swipe-indicator left" style={{ opacity: leftIndicatorOpacity }}>← Autre chose</div>
-              <div className="swipe-indicator right" style={{ opacity: rightIndicatorOpacity }}>J'aime →</div>
-            </>
-          )}
-
           <div className="bundle-card-inner">
             <div className="editorial-note">"{editorial}"</div>
 
@@ -1392,6 +1284,13 @@ function App() {
             }
           </div>
         </div>
+
+        {!isScrolled && (
+          <>
+            <div className="swipe-indicator left" style={{ opacity: leftIndicatorOpacity }}>← Autre chose</div>
+            <div className="swipe-indicator right" style={{ opacity: rightIndicatorOpacity }}>J'aime →</div>
+          </>
+        )}
 
         {nudge && <NudgeToast message={nudge} onDone={() => setNudge(null)} />}
 

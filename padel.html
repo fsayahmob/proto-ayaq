@@ -32,7 +32,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const {useState,useEffect,useRef,useCallback,useMemo}=React;
+const {useState,useEffect,useRef,useMemo}=React;
 const T={black:"#0a0a0a",ch:"#161616",grey:"#8a8a8a",light:"#c8c8c8",white:"#fafaf8",acc:"#f5d6a0",acc2:"#e8a838",df:"'Cormorant Garamond',Georgia,serif",bf:"'Outfit',system-ui,sans-serif"};
 
 /* ═══ PADEL EXPERTISE — SCORING ENGINE ═══
@@ -489,6 +489,7 @@ function App(){
     if(msg.match(/leger|léger|light/)) profile.tags.push("leger");
     if(msg.match(/confort/)) profile.tags.push("confort");
     if(msg.match(/spin|effet/)) profile.tags.push("spin","effet");
+    profile.tags=[...new Set(profile.tags)];
     profile.summary="Profil détecté : "+LEVELS.find(l=>l.id===profile.level)?.label+" · "+STYLES.find(s=>s.id===profile.style)?.label;
     return profile;
   };
@@ -637,22 +638,24 @@ function App(){
       const dot=product.sc.reduce((s,v,i)=>s+v*(last.sc[i]||0),0);
       if(dot>350) return `Profil technique similaire au ${last.name}. Les joueurs qui aiment l'un choisissent souvent l'autre.`;
     }
-    if(last.cat!==product.cat) return `Pour compléter — ${product.catLabel.toLowerCase()} adaptées à votre profil.`;
+    if(last.cat!==product.cat) return `Pour compléter — ${(product.catLabel||product.cat||"").toLowerCase()} adaptées à votre profil.`;
     return null;
   };
 
   /* On tap (expand card) → register interest + reorder items BELOW */
   const onCardTap=(product,cardIndex)=>{
-    setFeedExpanded(prev=>prev===product.id?null:product.id);
+    const isClosing=feedExpanded===product.id;
+    setFeedExpanded(isClosing?null:product.id);
     /* Only register interest on open, not close */
-    if(feedExpanded===product.id) return;
+    if(isClosing) return;
+    const interest={id:product.id,brand:product.brand,price:product.price,cat:product.cat,name:product.name,sc:product.sc};
     setFeedInterests(prev=>{
       if(prev.find(x=>x.id===product.id)) return prev;
-      return[...prev,{id:product.id,brand:product.brand,price:product.price,cat:product.cat,name:product.name,sc:product.sc}];
+      return[...prev,interest];
     });
     /* Reorder only products below this one */
     const currentOrder=lockedFeedOrder||defaultFeedOrder;
-    const newInterests=[...feedInterests.filter(x=>x.id!==product.id),{id:product.id,brand:product.brand,price:product.price,cat:product.cat,name:product.name,sc:product.sc}];
+    const newInterests=[...feedInterests.filter(x=>x.id!==product.id),interest];
     const frozen=currentOrder.slice(0,cardIndex+1);
     const tail=currentOrder.slice(cardIndex+1);
     const scored=scoreAllProducts(tail,newInterests,feedProfile,feedCatBoost);
@@ -677,11 +680,11 @@ function App(){
     if(feedProfile) document.getElementById("attentional-feed")?.scrollIntoView({behavior:"smooth"});
   },[feedProfile]);
 
-  /* Recompute full feed order on chat actions (profile/catBoost) */
+  /* Recompute full feed order on chat actions (profile/catBoost).
+     Uses allProducts as base to avoid referencing lockedFeedOrder (prevents loop). */
   useEffect(()=>{
     if(feedProfile||feedCatBoost){
-      const base=lockedFeedOrder||defaultFeedOrder;
-      const scored=scoreAllProducts(base,feedInterests,feedProfile,feedCatBoost);
+      const scored=scoreAllProducts(allProducts,feedInterests,feedProfile,feedCatBoost);
       scored.sort((a,b)=>b._affinity-a._affinity);
       setLockedFeedOrder(scored);
     }
@@ -780,7 +783,7 @@ function App(){
           {getFeedOrder().map((p,i)=>{
             const isInterested=feedInterests.find(x=>x.id===p.id);
             const nudge=feedNudgeMap[p.id];
-            const highAffinity=p._affinity>5;
+            const highAffinity=(p._affinity||0)>5;
             const hasSpecs=!!(p.forme||p.tech);
             const isOpen=feedExpanded===p.id;
             return <div key={p.id} style={{animation:"fadeUp 0.4s ease "+(Math.min(i,6)*0.06)+"s both"}}>

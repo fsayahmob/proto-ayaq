@@ -28,6 +28,15 @@ touch-action:pan-y;overscroll-behavior:none}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes nudgeIn{from{transform:translateY(100%);opacity:0}to{transform:translateY(0);opacity:1}}
 @keyframes nudgeOut{from{transform:translateY(0);opacity:1}to{transform:translateY(100%);opacity:0}}
+@keyframes idleWiggle{
+0%{transform:translateX(0) rotate(0)}
+15%{transform:translateX(-12px) rotate(-1.5deg)}
+30%{transform:translateX(10px) rotate(1.2deg)}
+45%{transform:translateX(-6px) rotate(-.8deg)}
+60%{transform:translateX(5px) rotate(.5deg)}
+75%{transform:translateX(-2px) rotate(0)}
+100%{transform:translateX(0) rotate(0)}}
+.bundle-card.idle-hint{animation:idleWiggle .7s ease-in-out}
 
 .loading-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;
 height:100%;gap:24px}
@@ -1637,6 +1646,17 @@ function App() {
     }
   }, [bundleCount]);
 
+  // Idle wiggle — shake the card after 4s of inactivity to hint swipe
+  const [idleHint, setIdleHint] = useState(false);
+  useEffect(() => {
+    if (!currentBundle || isAnimating) return;
+    const timer = setTimeout(() => {
+      setIdleHint(true);
+      setTimeout(() => setIdleHint(false), 800);
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [currentBundle, isAnimating, bundleCount]);
+
   // Touch/mouse handlers
   // Track card scroll position
   const handleCardScroll = useCallback(() => {
@@ -1788,7 +1808,7 @@ function App() {
       </div>
 
       <div className="card-area">
-        <div className={`bundle-card ${isAnimating && !entering ? 'animating' : ''} ${entering ? 'entering' : ''} ${isScrolled ? 'scrolled' : ''}`}
+        <div className={`bundle-card ${isAnimating && !entering ? 'animating' : ''} ${entering ? 'entering' : ''} ${isScrolled ? 'scrolled' : ''} ${idleHint ? 'idle-hint' : ''}`}
              style={entering ? {'--enter-from': enterFrom + 'px'} : cardStyle}
              ref={cardRef}
              onScroll={handleCardScroll}

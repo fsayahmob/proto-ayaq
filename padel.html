@@ -473,7 +473,7 @@ function App(){
     const msg=userMsg.toLowerCase();
     const profile={level:"intermediaire",style:"polyvalent",position:"les-deux",freq:"regulier",injury:"aucune",tags:[],summary:""};
     const details=[];
-    if(msg.match(/débute|commence|nouveau|premier/)){profile.level="debutant";profile.tags.push("debutant","confort","tolerant","progression");details.push("niveau débutant");}
+    if(msg.match(/d[ée]bute|d[ée]butant|commence|nouveau|premier|d[ée]couvr/)){profile.level="debutant";profile.tags.push("debutant","confort","tolerant","progression");details.push("niveau débutant");}
     else if(msg.match(/compét|tournoi|classé|expert/)){profile.level="expert";profile.tags.push("expert","pro","competition");details.push("niveau expert");}
     else if(msg.match(/avanc|3.ans|4.ans|5.ans/)){profile.level="avance";profile.tags.push("avance","competition");details.push("niveau avancé");}
     if(msg.match(/smash|attaqu|puissan|offensi/)){profile.style="puissance";profile.tags.push("puissance","attaque","smash","explosif");details.push("style puissance");}
@@ -490,12 +490,14 @@ function App(){
     if(msg.match(/confort/)){profile.tags.push("confort");details.push("priorité confort");}
     if(msg.match(/spin|effet/)){profile.tags.push("spin","effet");details.push("jeu à effets");}
     if(msg.match(/battre|gagner|vaincre|dominer/)){profile.tags.push("competition","puissance");details.push("objectif compétition");}
+    if(msg.match(/progress|am[ée]liorer|monter|[ée]voluer|vite|rapid/)){profile.tags.push("progression");details.push("objectif progression");}
     profile.tags=[...new Set(profile.tags)];
     const levelLabel=LEVELS.find(l=>l.id===profile.level)?.label||"Intermédiaire";
     const styleLabel=STYLES.find(s=>s.id===profile.style)?.label||"Polyvalent";
+    const detailStr=details.join(", ");
     profile.summary=details.length>0
-      ?`Compris ! J'ai noté : ${details.join(", ")}. Je configure un setup ${levelLabel} orienté ${styleLabel} pour vous.`
-      :`Profil ${levelLabel} · ${styleLabel}. Précisez votre niveau ou style pour un setup plus personnalisé.`;
+      ?`Parfait, je vois le tableau : ${detailStr}. Je te prépare un setup ${levelLabel} orienté ${styleLabel} qui correspond exactement à ton jeu !`
+      :`Dis-moi comment tu joues ! Ton niveau, ton style (attaque, défense, polyvalent), tes éventuelles douleurs... Plus tu me donnes d'infos, plus le setup sera adapté.`;
     return profile;
   };
 
@@ -815,7 +817,7 @@ function App(){
             return <div key={p.id} style={{animation:"fadeUp 0.4s ease "+(Math.min(i,6)*0.06)+"s both"}}>
               {/* Card with tap-to-expand overlay */}
               <div data-feed-id={p.id} onClick={(e)=>{e.preventDefault();onCardTap(p,i);}} style={{position:"relative",overflow:"hidden",aspectRatio:"3/4",cursor:"pointer",...(isInterested?{animation:"dwellGlow 0.6s ease forwards"}:{})}}>
-                <img src={p.img} alt={p.name} loading="lazy" onError={e=>{e.target.style.display="none";}} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
+                <img src={p.img} alt={p.name} loading="lazy" onError={e=>{e.target.style.display="none";}} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:p.cat==="raquette"?"cover":"contain",background:p.cat!=="raquette"?"#f0efeb":"transparent",padding:p.cat!=="raquette"?"8%":"0"}}/>
                 <div style={{position:"absolute",top:8,left:8,background:"rgba(10,10,10,0.82)",padding:"4px 10px",zIndex:3}}><span style={{fontFamily:T.bf,fontSize:8,fontWeight:600,letterSpacing:"1.5px",color:T.acc2}}>{p.catLabel}</span></div>
                 {highAffinity&&<div style={{position:"absolute",top:8,right:8,background:"rgba(232,168,56,0.92)",padding:"4px 10px",zIndex:3,animation:"fadeIn 0.4s"}}><span style={{fontFamily:T.bf,fontSize:8,fontWeight:700,color:"#0a0a0a"}}>Pour vous</span></div>}
 

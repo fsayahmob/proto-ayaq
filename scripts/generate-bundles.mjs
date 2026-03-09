@@ -270,6 +270,8 @@ const PALETTES = {
   'soft-neutral': { colors: ['GRIS', 'MARINE', 'BLANC'], mood: 'Neutre doux' },
   'warm-neutral': { colors: ['NOIR', 'TERRE', 'GRIS'], mood: 'Neutre chaud' },
   'safari':       { colors: ['VERT', 'TERRE', 'NOIR'], mood: 'Safari urbain' },
+  'warm-accent':  { colors: ['ROUGE', 'NOIR', 'GRIS'], mood: 'Accent chaud' },
+  'earth-accent': { colors: ['ROUGE', 'TERRE', 'BLANC'], mood: 'Terre et brique' },
 };
 
 const UNIVERSAL_COLORS = new Set(['NOIR', 'BLANC', 'GRIS']);
@@ -308,9 +310,9 @@ function stylesCompatible(s1, s2) {
 // ─── Occasion × Style Matrix ────────────────────────────────────────
 // Defines which style axes work for each occasion
 const OCCASION_STYLES = {
-  'bureau-casual':  ['minimal', 'elevated', 'french-casual'],
+  'bureau-casual':  ['minimal', 'elevated', 'french-casual', 'workwear'],
   'weekend':        ['workwear', 'street', 'french-casual', 'heritage', 'gorpcore'],
-  'sortie':         ['street', 'elevated', 'french-casual', 'heritage'],
+  'sortie':         ['street', 'elevated', 'french-casual', 'heritage', 'workwear'],
   'date':           ['elevated', 'minimal', 'french-casual'],
   'voyage':         ['workwear', 'french-casual', 'gorpcore', 'minimal'],
   'sport-outdoor':  ['gorpcore', 'street', 'workwear'],
@@ -594,17 +596,29 @@ async function main() {
   const bundles = [];
   const seen = new Set();
   const SEASONS = ['ete', 'mi-saison', 'hiver'];
-  const MAX_ATTEMPTS_PER_COMBO = 5;
-  const TARGET_BUNDLES_PER_COMBO = 2;
+  const MAX_ATTEMPTS_PER_COMBO = 10;
+  const TARGET_BUNDLES_PER_COMBO = 4;
+
+  // Track per-style bundle count to enforce balance caps
+  const ALL_STYLES = ['workwear', 'minimal', 'street', 'elevated', 'gorpcore', 'heritage', 'french-casual'];
+  const styleCount = {};
+  ALL_STYLES.forEach(s => { styleCount[s] = 0; });
+  const MAX_PER_STYLE = 22; // Cap to prevent any style from dominating
 
   for (const occasion of Object.keys(OCCASION_STYLES)) {
     const validStyles = OCCASION_STYLES[occasion];
     for (const style of validStyles) {
+      // Skip if this style already hit the cap
+      if (styleCount[style] >= MAX_PER_STYLE) continue;
+
       for (const season of SEASONS) {
+        if (styleCount[style] >= MAX_PER_STYLE) break;
+
         const paletteKeys = Object.keys(PALETTES);
         let generated = 0;
 
         for (let attempt = 0; attempt < MAX_ATTEMPTS_PER_COMBO && generated < TARGET_BUNDLES_PER_COMBO; attempt++) {
+          if (styleCount[style] >= MAX_PER_STYLE) break;
           const palette = paletteKeys[Math.floor(Math.random() * paletteKeys.length)];
           const bundle = generateBundle(catalog, occasion, style, season, palette);
           if (!bundle) continue;
@@ -620,13 +634,213 @@ async function main() {
           bundle.alternatives = generateAlternatives(catalog, bundle);
 
           bundles.push(bundle);
+          styleCount[style]++;
           generated++;
         }
       }
     }
   }
 
-  console.log(`   → ${bundles.length} unique bundles generated\n`);
+  console.log(`   → ${bundles.length} bundles after initial pass (capped at ${MAX_PER_STYLE}/style)\n`);
+  console.log('   Style distribution:', JSON.stringify(styleCount));
+
+  // ─── REBALANCING PASS ───────────────────────────────────────────
+  // Ensure minimum coverage per axis value (target: ≥8 bundles per value)
+  const MIN_BUNDLES_PER_VALUE = 15;
+  const REBALANCE_MAX_ATTEMPTS = 60;
+
+  function countAxisValue(bundleList, axis, value) {
+    return bundleList.filter(b => {
+      if (axis === 'style') return b.style === value;
+      if (axis === 'silhouette') return b.silhouette === value;
+      if (axis === 'formality') return b.formality === value;
+      if (axis === 'color') {
+        return Object.values(b.items).some(item => item.colors.includes(value));
+      }
+      if (axis === 'priceRange') {
+        const prices = Object.values(b.items).map(i => i.price);
+        const avg = prices.reduce((a, b) => a + b, 0) / prices.length;
+        const range = avg < 100 ? 'budget' : avg > 200 ? 'premium' : 'mid';
+        return range === value;
+      }
+      return false;
+    }).length;
+  }
+
+  // Find underrepresented style values
+  const ALL_COLORS = ['NOIR', 'BLANC', 'MARINE', 'VERT', 'TERRE', 'ROUGE', 'GRIS'];
+  const ALL_SILHOUETTES = ['relaxed', 'regular', 'structured'];
+
+  const rebalanceTargets = [];
+
+  for (const style of ALL_STYLES) {
+    const count = countAxisValue(bundles, 'style', style);
+    if (count < MIN_BUNDLES_PER_VALUE) {
+      rebalanceTargets.push({ axis: 'style', value: style, deficit: MIN_BUNDLES_PER_VALUE - count });
+    }
+  }
+
+  // Rebalance styles first (biggest impact)
+  for (const target of rebalanceTargets.sort((a, b) => b.deficit - a.deficit)) {
+    console.log(`   Rebalancing ${target.axis}=${target.value}: ${countAxisValue(bundles, target.axis, target.value)} → target ${MIN_BUNDLES_PER_VALUE}`);
+    let generated = 0;
+    const occasions = Object.keys(OCCASION_STYLES).filter(o => OCCASION_STYLES[o].includes(target.value));
+
+    for (let attempt = 0; attempt < REBALANCE_MAX_ATTEMPTS && generated < target.deficit; attempt++) {
+      const occasion = occasions[Math.floor(Math.random() * occasions.length)];
+      const season = SEASONS[Math.floor(Math.random() * SEASONS.length)];
+      const paletteKeys = Object.keys(PALETTES);
+      const palette = paletteKeys[Math.floor(Math.random() * paletteKeys.length)];
+
+      const bundle = generateBundle(catalog, occasion, target.value, season, palette);
+      if (!bundle) continue;
+
+      const fp = bundleFingerprint(bundle);
+      if (seen.has(fp)) continue;
+      seen.add(fp);
+
+      bundle.editorial = generateEditorialText(target.value, occasion);
+      bundle.alternatives = generateAlternatives(catalog, bundle);
+      bundles.push(bundle);
+      generated++;
+    }
+    console.log(`     → added ${generated}, now ${countAxisValue(bundles, target.axis, target.value)} bundles`);
+  }
+
+  // Rebalance colors: directly compose bundles featuring target color products
+  for (const color of ['ROUGE', 'VERT']) {
+    const count = countAxisValue(bundles, 'color', color);
+    if (count < MIN_BUNDLES_PER_VALUE) {
+      console.log(`   Rebalancing color=${color}: ${count} → target ${MIN_BUNDLES_PER_VALUE}`);
+      let generated = 0;
+      const deficit = MIN_BUNDLES_PER_VALUE - count;
+
+      // Get all products with this color, grouped by slot
+      const colorBySlot = {};
+      for (const p of catalog.filter(p => p.colors.includes(color))) {
+        if (!colorBySlot[p.slot]) colorBySlot[p.slot] = [];
+        colorBySlot[p.slot].push(p);
+      }
+
+      // Direct composition: pick a color product as anchor, fill rest normally
+      const anchorSlots = ['HAUT', 'BAS', 'CHAUSSURES', 'VESTE'].filter(s => colorBySlot[s]?.length > 0);
+
+      for (let attempt = 0; attempt < REBALANCE_MAX_ATTEMPTS * 3 && generated < deficit; attempt++) {
+        const anchorSlot = anchorSlots[Math.floor(Math.random() * anchorSlots.length)];
+        const anchor = colorBySlot[anchorSlot][Math.floor(Math.random() * colorBySlot[anchorSlot].length)];
+        const style = anchor.styles[0];
+        const season = anchor.seasons.includes('toute-saison')
+          ? SEASONS[Math.floor(Math.random() * SEASONS.length)]
+          : anchor.seasons[Math.floor(Math.random() * anchor.seasons.length)];
+        const occasion = anchor.occasions[Math.floor(Math.random() * anchor.occasions.length)];
+        if (!occasion) continue;
+
+        // Build bundle around anchor
+        const usedBrands = new Set([anchor.vendor]);
+        const items = {};
+        items[anchorSlot.toLowerCase()] = anchor;
+
+        // Fill remaining required slots
+        const requiredSlots = ['HAUT', 'BAS', 'CHAUSSURES'].filter(s => s !== anchorSlot);
+        let valid = true;
+        for (const slot of requiredSlots) {
+          const candidates = catalog.filter(p =>
+            p.slot === slot &&
+            (p.seasons.includes(season) || p.seasons.includes('toute-saison')) &&
+            p.styles.some(s => stylesCompatible(s, style))
+          );
+          const pick = pickBest(candidates, style, [color, 'NOIR', 'GRIS', 'BLANC'], usedBrands);
+          if (!pick) { valid = false; break; }
+          items[slot.toLowerCase()] = pick;
+          usedBrands.add(pick.vendor);
+        }
+        if (!valid) continue;
+
+        // Optional veste in non-summer
+        if (season !== 'ete' && anchorSlot !== 'VESTE') {
+          const vestes = catalog.filter(p => p.slot === 'VESTE' && (p.seasons.includes(season) || p.seasons.includes('toute-saison')));
+          const veste = pickBest(vestes, style, [color, 'NOIR', 'GRIS'], usedBrands);
+          if (veste) items.veste = veste;
+        }
+
+        const itemList = Object.values(items);
+        const silCounts = {};
+        itemList.forEach(i => { silCounts[i.silhouette] = (silCounts[i.silhouette] || 0) + 1; });
+        const dominantSilhouette = Object.entries(silCounts).sort((a, b) => b[1] - a[1])[0][0];
+        const total = Math.round(itemList.reduce((sum, p) => sum + p.price, 0));
+        const usedColors = [...new Set(itemList.flatMap(i => i.colors))];
+
+        const bundle = {
+          style,
+          occasion,
+          season,
+          palette: findMatchingPalette(usedColors),
+          paletteMood: PALETTES[findMatchingPalette(usedColors)]?.mood || 'Custom',
+          silhouette: dominantSilhouette,
+          formality: itemList.some(i => i.formality === 'smart-casual') ? 'smart-casual' : 'decontracte',
+          total,
+          items: Object.fromEntries(
+            Object.entries(items).map(([slot, p]) => [slot, {
+              id: p.id, variantId: p.variantId, handle: p.handle, title: p.title,
+              vendor: p.vendor, type: p.type, price: p.price, colors: p.colors, silhouette: p.silhouette,
+            }])
+          ),
+          tags: [style, occasion, season, dominantSilhouette, ...usedColors.map(c => `color-${c.toLowerCase()}`)],
+        };
+
+        const fp = bundleFingerprint(bundle);
+        if (seen.has(fp)) continue;
+        seen.add(fp);
+
+        bundle.editorial = generateEditorialText(style, occasion);
+        bundle.alternatives = generateAlternatives(catalog, bundle);
+        bundles.push(bundle);
+        generated++;
+      }
+      console.log(`     → added ${generated}, now ${countAxisValue(bundles, 'color', color)} bundles`);
+    }
+  }
+
+  // Rebalance silhouette: ensure structured has representation
+  for (const sil of ['structured', 'relaxed']) {
+    const count = countAxisValue(bundles, 'silhouette', sil);
+    if (count < MIN_BUNDLES_PER_VALUE) {
+      console.log(`   Rebalancing silhouette=${sil}: ${count} → target ${MIN_BUNDLES_PER_VALUE}`);
+      // For structured, target JAGVI products specifically
+      const silProducts = catalog.filter(p => p.silhouette === sil);
+      const silStyles = [...new Set(silProducts.flatMap(p => p.styles))];
+      let generated = 0;
+
+      for (let attempt = 0; attempt < REBALANCE_MAX_ATTEMPTS && generated < (MIN_BUNDLES_PER_VALUE - count); attempt++) {
+        const style = silStyles.length > 0
+          ? silStyles[Math.floor(Math.random() * silStyles.length)]
+          : ALL_STYLES[Math.floor(Math.random() * ALL_STYLES.length)];
+        const occasions = Object.keys(OCCASION_STYLES).filter(o => OCCASION_STYLES[o]?.includes(style));
+        if (occasions.length === 0) continue;
+        const occasion = occasions[Math.floor(Math.random() * occasions.length)];
+        const season = SEASONS[Math.floor(Math.random() * SEASONS.length)];
+        const palette = Object.keys(PALETTES)[Math.floor(Math.random() * Object.keys(PALETTES).length)];
+
+        const bundle = generateBundle(catalog, occasion, style, season, palette);
+        if (!bundle) continue;
+
+        // Only accept if dominant silhouette matches
+        if (bundle.silhouette !== sil) continue;
+
+        const fp = bundleFingerprint(bundle);
+        if (seen.has(fp)) continue;
+        seen.add(fp);
+
+        bundle.editorial = generateEditorialText(style, occasion);
+        bundle.alternatives = generateAlternatives(catalog, bundle);
+        bundles.push(bundle);
+        generated++;
+      }
+      console.log(`     → added ${generated}, now ${countAxisValue(bundles, 'silhouette', sil)} bundles`);
+    }
+  }
+
+  console.log(`\n   → ${bundles.length} total bundles after rebalancing\n`);
 
   // Stats by axis
   const byStyle = {};

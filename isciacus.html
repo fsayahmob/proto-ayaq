@@ -79,6 +79,42 @@ letter-spacing:.05em;text-align:center;line-height:1.1}
 white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .product-slot-price{font-size:.6rem;color:var(--accent);text-align:center;font-weight:400}
 
+/* ─── Hero + Thumbnails layout ─────────────────────────────────── */
+.hero-section{position:relative;width:100%;max-width:320px;margin:0 auto}
+.hero-img-wrap{aspect-ratio:3/4;border-radius:12px;overflow:hidden;background:var(--bg-card-hover);
+position:relative;cursor:pointer}
+.hero-img-wrap img{width:100%;height:100%;object-fit:cover;display:block;
+transition:opacity .25s ease}
+.hero-info{position:absolute;bottom:0;left:0;right:0;
+background:linear-gradient(to top,rgba(10,10,10,.85) 0%,transparent 100%);
+padding:14px 12px 10px;display:flex;justify-content:space-between;align-items:flex-end}
+.hero-info-left{display:flex;flex-direction:column;gap:1px}
+.hero-slot-label{font-size:.6rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.08em}
+.hero-vendor{font-size:.85rem;font-weight:500;color:var(--text)}
+.hero-title{font-size:.7rem;color:var(--text-secondary);font-weight:300;
+white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
+.hero-price{font-family:var(--font-serif);font-size:1.1rem;color:var(--accent);font-weight:500}
+
+.thumb-strip{display:flex;gap:6px;justify-content:center;padding:2px 0}
+.thumb-item{width:60px;cursor:pointer;position:relative;transition:transform .15s ease;
+border-radius:8px;overflow:visible}
+.thumb-item:active{transform:scale(.93)}
+.thumb-item.selected{outline:2px solid var(--accent);outline-offset:2px;border-radius:8px}
+.thumb-img{width:60px;height:80px;border-radius:8px;overflow:hidden;background:var(--bg-card-hover)}
+.thumb-img img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb-label{font-size:.55rem;color:var(--text-secondary);text-align:center;
+text-transform:uppercase;letter-spacing:.04em;margin-top:2px;line-height:1}
+.thumb-price{font-size:.55rem;color:var(--accent);text-align:center;font-weight:400}
+
+/* ─── Lock & Reroll ────────────────────────────────────────────── */
+.thumb-item.locked .thumb-img{outline:2px solid var(--accent);outline-offset:-2px;border-radius:8px}
+.thumb-item.unlocked-hint .thumb-img{opacity:.5}
+.lock-badge{position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;
+background:var(--accent);display:flex;align-items:center;justify-content:center;
+font-size:9px;color:var(--bg);z-index:3;animation:fadeIn .2s ease;line-height:1}
+.lock-hint{text-align:center;font-size:.55rem;color:var(--accent);opacity:.6;
+letter-spacing:.06em;margin-top:-2px;animation:fadeIn .3s ease}
+
 .bundle-divider{height:1px;background:var(--border);margin:2px 0}
 
 .bundle-footer{display:flex;align-items:center;justify-content:space-between;padding:0 4px}
@@ -980,7 +1016,7 @@ function currentSeason(temp) {
 }
 
 // Select best bundle from RAG using Thompson Sampling
-function selectRAGBundle(ragData, productMap, weather, prefs, seenBundleIndices, direction) {
+function selectRAGBundle(ragData, productMap, weather, prefs, seenBundleIndices, direction, geminiDir) {
   if (!ragData || !ragData.bundles || ragData.bundles.length === 0) return null;
 
   const season = currentSeason(weather.temp);
@@ -1004,7 +1040,7 @@ function selectRAGBundle(ragData, productMap, weather, prefs, seenBundleIndices,
   if (candidates.length === 0) {
     // Reset seen bundles if we've exhausted them all
     seenBundleIndices.clear();
-    return selectRAGBundle(ragData, productMap, weather, prefs, seenBundleIndices, direction);
+    return selectRAGBundle(ragData, productMap, weather, prefs, seenBundleIndices, direction, geminiDir);
   }
 
   // Contextual occasion bonus
@@ -1015,7 +1051,33 @@ function selectRAGBundle(ragData, productMap, weather, prefs, seenBundleIndices,
     let score = scoreRAGBundle(bundle, prefs) * 8;
     // Occasion bonus
     if (bundle.occasion === preferOccasion) score += 2;
-    // Variety bonus for less common styles after many swipes
+    // Gemini direction bonus (heavy boost when user explicitly asked via chat)
+    if (geminiDir) {
+      // Style axis match
+      if (geminiDir.axis && bundle.style === geminiDir.axis) score += 5;
+      // Slot type match (e.g., accessoire: "casquette" matches bundle with casquette)
+      if (geminiDir.slots) {
+        for (const [slot, wanted] of Object.entries(geminiDir.slots)) {
+          if (!wanted) continue;
+          const item = bundle.items[slot];
+          if (item) {
+            const titleLower = (item.title || '').toLowerCase();
+            const typeLower = (item.type || '').toLowerCase();
+            const wantedLower = wanted.toLowerCase();
+            if (titleLower.includes(wantedLower) || typeLower.includes(wantedLower) || typeLower.includes(wantedLower + 's')) {
+              score += 10; // strong boost for explicit slot match
+            }
+          }
+        }
+      }
+      // Brand priority match
+      if (geminiDir.brands_priority) {
+        const vendors = Object.values(bundle.items).map(i => (i.vendor || '').toUpperCase());
+        for (const brand of geminiDir.brands_priority) {
+          if (vendors.some(v => v.includes(brand.toUpperCase()))) score += 3;
+        }
+      }
+    }
     return { bundle, idx, score: Math.max(0.1, score) };
   });
 
@@ -1071,6 +1133,46 @@ function extractRAGBundleAxes(ragBundle) {
   const total = ragBundle.total || 0;
   const avgPrice = total / Math.max(1, Object.keys(ragBundle.items).length);
   axes.priceRange.push(avgPrice < 100 ? 'budget' : avgPrice > 200 ? 'premium' : 'mid');
+  return axes;
+}
+
+// Extract axes from a single product (for Lock & Reroll signal)
+function extractItemAxes(product, ragBundle, slotKey) {
+  const axes = { style: [], color: [], silhouette: [], formality: [], priceRange: [] };
+  if (!product) return axes;
+
+  // If we have RAG data for this item, use it
+  if (ragBundle && ragBundle.items) {
+    const ragItem = ragBundle.items[slotKey.toLowerCase()];
+    if (ragItem && ragItem.colors) {
+      for (const c of ragItem.colors) {
+        if (!axes.color.includes(c)) axes.color.push(c);
+      }
+    }
+    // Bundle-level style/silhouette/formality still apply
+    if (ragBundle.style) axes.style.push(ragBundle.style);
+    if (ragBundle.silhouette) axes.silhouette.push(ragBundle.silhouette);
+    if (ragBundle.formality) axes.formality.push(ragBundle.formality);
+  }
+
+  // Color from product
+  const color = product._colorFamily || 'NOIR';
+  if (!axes.color.includes(color)) axes.color.push(color);
+
+  // Price
+  const price = parseFloat(product.priceRange?.minVariantPrice?.amount || '0');
+  const range = price < 100 ? 'budget' : price > 200 ? 'premium' : 'mid';
+  if (!axes.priceRange.includes(range)) axes.priceRange.push(range);
+
+  // Brand DNA
+  const vendor = product.vendor?.toUpperCase();
+  const brandMeta = BRAND_STYLE_MAP[vendor];
+  if (brandMeta) {
+    for (const s of brandMeta.styles) { if (!axes.style.includes(s)) axes.style.push(s); }
+    if (!axes.silhouette.includes(brandMeta.silhouette)) axes.silhouette.push(brandMeta.silhouette);
+    if (!axes.formality.includes(brandMeta.formality)) axes.formality.push(brandMeta.formality);
+  }
+
   return axes;
 }
 
@@ -1223,6 +1325,69 @@ function ProductSlot({ product, slotKey, isActive, onSwap }) {
       <div className="product-slot-label">{slotLabels[slotKey]}</div>
       <div className="product-slot-brand">{product.vendor}</div>
       <div className="product-slot-price">{Math.round(getPrice(product))}€</div>
+    </div>
+  );
+}
+
+const SLOT_LABELS = { HAUT:'Haut', VESTE:'Veste', BAS:'Bas', CHAUSSURES:'Chaussures', ACCESSOIRE:'Accessoire' };
+
+function HeroBundle({ bundle, activeSlot, lockedSlots, heroSlot, onHeroChange, onSlotTap, onLockToggle }) {
+  const allSlots = useMemo(() => {
+    const slots = [];
+    if (bundle.items.veste) slots.push('VESTE');
+    slots.push('HAUT', 'BAS', 'CHAUSSURES');
+    if (bundle.items.accessoire) slots.push('ACCESSOIRE');
+    return slots;
+  }, [bundle]);
+
+  const currentHero = heroSlot && bundle.items[heroSlot.toLowerCase()] ? heroSlot : allSlots[0];
+  const heroProduct = bundle.items[currentHero.toLowerCase()];
+  const hasLocks = lockedSlots.size > 0;
+  const isHeroLocked = lockedSlots.has(currentHero);
+
+  if (!heroProduct) return null;
+
+  return (
+    <div>
+      <div className="hero-section">
+        <div className="hero-img-wrap" onClick={(e) => { e.stopPropagation(); onSlotTap(currentHero); }}>
+          {getImage(heroProduct, 600) && (
+            <img src={getImage(heroProduct, 600)} alt={heroProduct.title} draggable="false" />
+          )}
+          <div className="hero-info">
+            <div className="hero-info-left">
+              <div className="hero-slot-label">{SLOT_LABELS[currentHero]}</div>
+              <div className="hero-vendor">{heroProduct.vendor}</div>
+              <div className="hero-title">{heroProduct.title}</div>
+            </div>
+            <div className="hero-price">{Math.round(getPrice(heroProduct))}€</div>
+          </div>
+          {isHeroLocked && <div className="lock-badge" style={{position:'absolute',top:10,right:10,width:28,height:28,fontSize:14}}>🔒</div>}
+        </div>
+      </div>
+
+      <div className="thumb-strip">
+        {allSlots.map(slot => {
+          const p = bundle.items[slot.toLowerCase()];
+          if (!p) return null;
+          const isSelected = slot === currentHero;
+          const isLocked = lockedSlots.has(slot);
+          const dimmed = hasLocks && !isLocked;
+          return (
+            <div key={slot}
+                 className={`thumb-item ${isSelected ? 'selected' : ''} ${isLocked ? 'locked' : ''} ${dimmed ? 'unlocked-hint' : ''}`}
+                 onClick={(e) => { e.stopPropagation(); onLockToggle(slot); onHeroChange(slot); }}>
+              <div className="thumb-img">
+                {getImage(p) && <img src={getImage(p)} alt={p.title} loading="lazy" draggable="false" />}
+              </div>
+              <div className="thumb-label">{SLOT_LABELS[slot]}</div>
+              <div className="thumb-price">{Math.round(getPrice(p))}€</div>
+              {isLocked && <div className="lock-badge">🔒</div>}
+            </div>
+          );
+        })}
+      </div>
+      {hasLocks && <div className="lock-hint">Swipe pour changer les pièces non verrouillées</div>}
     </div>
   );
 }
@@ -1400,6 +1565,8 @@ function App() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [contextInput, setContextInput] = useState('');
   const [cartLoading, setCartLoading] = useState(false);
+  const [heroSlot, setHeroSlot] = useState(null);
+  const [lockedSlots, setLockedSlots] = useState(new Set());
 
   const dragRef = useRef({ startX: 0, startY: 0, dragging: false, startTime: 0 });
   const cardRef = useRef(null);
@@ -1462,6 +1629,16 @@ function App() {
     setActiveSlot(null);
     setAlternatives(null);
 
+    // Capture locked items before state changes
+    const currentLocked = new Set(lockedSlots);
+    const lockedItems = {};
+    if (currentLocked.size > 0 && currentBundle) {
+      for (const slot of currentLocked) {
+        const item = currentBundle.items[slot.toLowerCase()];
+        if (item) lockedItems[slot.toLowerCase()] = item;
+      }
+    }
+
     // Record signals + update Thompson preferences
     setUserSignals(prev => {
       const next = { ...prev, preferences: { ...prev.preferences } };
@@ -1488,7 +1665,8 @@ function App() {
           });
         } else {
           next.swipeLefts = [...prev.swipeLefts, entry];
-          Object.values(currentBundle.items).filter(Boolean).forEach(p => {
+          // Only avoid unlocked products
+          Object.entries(currentBundle.items).filter(([k, v]) => v && !currentLocked.has(k.toUpperCase())).forEach(([k, p]) => {
             next.avoidedProducts = [...prev.avoidedProducts, p.handle];
           });
         }
@@ -1527,6 +1705,15 @@ function App() {
           newBundle = composeBundle(catalog, weather, currentSignals, previousBundleRef.current, direction);
         }
 
+        // Lock & Reroll: overlay locked items onto new bundle (only on left swipe)
+        if (Object.keys(lockedItems).length > 0 && newBundle && direction === 'left') {
+          newBundle = { ...newBundle, items: { ...newBundle.items, ...lockedItems } };
+        }
+        // Clear locks on right swipe (full accept) or if no locks remain relevant
+        if (direction === 'right' || Object.keys(lockedItems).length === 0) {
+          setLockedSlots(new Set());
+        }
+
         previousBundleRef.current = newBundle;
         setCurrentBundle(newBundle);
         setSwipeOffset(0);
@@ -1536,6 +1723,7 @@ function App() {
         setActiveSlot(null);
         setAlternatives(null);
         setIsScrolled(false);
+        setHeroSlot(null);
         if (cardRef.current) cardRef.current.scrollTop = 0;
 
         setTimeout(() => {
@@ -1545,7 +1733,7 @@ function App() {
         return currentSignals;
       });
     }, 350);
-  }, [catalog, weather, currentBundle, isAnimating]);
+  }, [catalog, weather, currentBundle, isAnimating, lockedSlots]);
 
   // Nudge effect
   useEffect(() => {
@@ -1608,6 +1796,41 @@ function App() {
   const onMouseDown = useCallback(e => handleDragStart(e.clientX, e.clientY), [handleDragStart]);
   const onMouseMove = useCallback(e => { if (dragRef.current.dragging) handleDragMove(e.clientX); }, [handleDragMove]);
   const onMouseUp = useCallback(e => handleDragEnd(e.clientX), [handleDragEnd]);
+
+  // Hero slot selection
+  const handleHeroChange = useCallback((slot) => {
+    setHeroSlot(slot);
+  }, []);
+
+  // Lock toggle for Lock & Reroll
+  const handleLockToggle = useCallback((slot) => {
+    setLockedSlots(prev => {
+      const next = new Set(prev);
+      if (next.has(slot)) {
+        next.delete(slot);
+      } else {
+        next.add(slot);
+        // Send strong positive TSMA signal for the locked item
+        const product = currentBundle?.items[slot.toLowerCase()];
+        if (product) {
+          setUserSignals(prevSignals => {
+            const next2 = { ...prevSignals, preferences: { ...prevSignals.preferences } };
+            for (const axis of Object.keys(next2.preferences)) {
+              next2.preferences[axis] = { ...prevSignals.preferences[axis] };
+              for (const val of Object.keys(next2.preferences[axis])) {
+                next2.preferences[axis][val] = { ...prevSignals.preferences[axis][val] };
+              }
+            }
+            // Extract axes from just this product and send a strong like signal
+            const itemAxes = extractItemAxes(product, currentRAGBundleRef.current, slot);
+            updatePreferences(next2.preferences, itemAxes, 'right');
+            return next2;
+          });
+        }
+      }
+      return next;
+    });
+  }, [currentBundle]);
 
   // Tap on product → show alternatives to swap (RAG alternatives first, then random)
   const handleSlotSwap = useCallback((slot) => {
@@ -1677,6 +1900,7 @@ function App() {
     if (!contextInput.trim() || !catalog || !weather || contextLoading) return;
     const msg = contextInput.trim();
     setContextLoading(true);
+    let geminiDirRef = null;
     try {
       const resp = await fetch('/api/gemini-isciacus', {
         method: 'POST',
@@ -1687,9 +1911,9 @@ function App() {
         })
       });
       if (resp.ok) {
-        const direction = await resp.json();
-        if (direction.editorial) {
-          setNudge(direction.editorial);
+        geminiDirRef = await resp.json();
+        if (geminiDirRef.editorial) {
+          setNudge(geminiDirRef.editorial);
         }
       }
     } catch (e) {
@@ -1697,12 +1921,12 @@ function App() {
     }
     setContextLoading(false);
     setContextInput('');
-    // Recompose bundle — try RAG first
+    // Recompose bundle — try RAG first, using Gemini direction to guide selection
     let newBundle = null;
     if (ragDataRef.current && productMapRef.current) {
       const selected = selectRAGBundle(
         ragDataRef.current, productMapRef.current, weather,
-        userSignals.preferences, seenBundlesRef.current, 'right'
+        userSignals.preferences, seenBundlesRef.current, 'right', geminiDirRef
       );
       if (selected) {
         const resolvedItems = resolveRAGItems(selected.bundle.items, productMapRef.current);
@@ -1740,12 +1964,6 @@ function App() {
   // Use RAG editorial if available, otherwise generate dynamically
   const editorial = currentBundle.editorial || generateEditorial(currentBundle, weather, style);
 
-  const slotOrder = [];
-  if (currentBundle.items.veste) slotOrder.push('VESTE');
-  slotOrder.push('HAUT', 'BAS');
-  const row2 = ['CHAUSSURES'];
-  if (currentBundle.items.accessoire) row2.push('ACCESSOIRE');
-
   const leftIndicatorOpacity = swipeOffset < -30 ? Math.min(1, (-swipeOffset - 30) / 70) : 0;
   const rightIndicatorOpacity = swipeOffset > 30 ? Math.min(1, (swipeOffset - 30) / 70) : 0;
 
@@ -1778,20 +1996,10 @@ function App() {
           <div className="bundle-card-inner">
             <div className="editorial-note">"{editorial}"</div>
 
-            <div className="products-grid">
-              {slotOrder.map(slot => (
-                <ProductSlot key={slot} product={currentBundle.items[slot.toLowerCase()]}
-                  slotKey={slot} isActive={activeSlot === slot}
-                  onSwap={handleSlotSwap} />
-              ))}
-            </div>
-            <div className="products-grid">
-              {row2.map(slot => (
-                <ProductSlot key={slot} product={currentBundle.items[slot.toLowerCase()]}
-                  slotKey={slot} isActive={activeSlot === slot}
-                  onSwap={handleSlotSwap} />
-              ))}
-            </div>
+            <HeroBundle bundle={currentBundle} activeSlot={activeSlot}
+              lockedSlots={lockedSlots} heroSlot={heroSlot}
+              onHeroChange={handleHeroChange} onSlotTap={handleSlotSwap}
+              onLockToggle={handleLockToggle} />
 
             <div className="bundle-divider"></div>
 

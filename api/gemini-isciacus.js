@@ -82,6 +82,9 @@ export default async function handler(req, res) {
       if (signals.swipeCount) {
         userMessage += ` ${signals.swipeCount} looks vus.`;
       }
+      if (signals.userMessage) {
+        userMessage += ` Message du client : "${signals.userMessage}"`;
+      }
     }
 
     const geminiResp = await fetch(

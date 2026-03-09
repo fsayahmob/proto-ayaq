@@ -106,21 +106,13 @@ border-radius:8px;overflow:visible}
 text-transform:uppercase;letter-spacing:.04em;margin-top:2px;line-height:1}
 .thumb-price{font-size:.55rem;color:var(--accent);text-align:center;font-weight:400}
 
-/* ─── Lock & Reroll ────────────────────────────────────────────── */
-.thumb-item.locked .thumb-img{outline:2px solid var(--accent);outline-offset:-2px;border-radius:8px}
-.thumb-item.unlocked-hint .thumb-img{opacity:.5}
-.lock-badge{position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;
-background:var(--accent);display:flex;align-items:center;justify-content:center;
-font-size:9px;color:var(--bg);z-index:3;animation:fadeIn .2s ease;line-height:1}
-.hero-lock-btn{position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;
-background:rgba(10,10,10,.6);border:1px solid rgba(255,255,255,.15);
-display:flex;align-items:center;justify-content:center;font-size:15px;
-cursor:pointer;z-index:4;transition:background .2s,border-color .2s,transform .15s;
--webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
-.hero-lock-btn:active{transform:scale(.9)}
-.hero-lock-btn.locked{background:var(--accent);border-color:var(--accent)}
-.lock-hint{text-align:center;font-size:.55rem;color:var(--accent);opacity:.6;
-letter-spacing:.06em;margin-top:-2px;animation:fadeIn .3s ease}
+/* ─── Add-to-cart per product ──────────────────────────────────── */
+.detail-card-atc{margin-top:8px;padding:10px;border:1px solid var(--accent);
+background:transparent;color:var(--accent);font-family:var(--font-sans);font-size:.75rem;
+font-weight:500;letter-spacing:.06em;border-radius:8px;cursor:pointer;width:100%;
+transition:background .2s,color .2s;text-transform:uppercase}
+.detail-card-atc:hover{background:var(--accent);color:var(--bg)}
+.detail-card-atc:disabled{opacity:.5;cursor:wait}
 
 .bundle-divider{height:1px;background:var(--border);margin:2px 0}
 
@@ -1023,7 +1015,7 @@ function currentSeason(temp) {
 }
 
 // Select best bundle from RAG using Thompson Sampling
-function selectRAGBundle(ragData, productMap, weather, prefs, seenBundleIndices, direction, geminiDir, lockedHandles) {
+function selectRAGBundle(ragData, productMap, weather, prefs, seenBundleIndices, direction, geminiDir) {
   if (!ragData || !ragData.bundles || ragData.bundles.length === 0) return null;
 
   const season = currentSeason(weather.temp);
@@ -1031,37 +1023,21 @@ function selectRAGBundle(ragData, productMap, weather, prefs, seenBundleIndices,
   const hour = now.getHours();
   const isWeekend = now.getDay() === 0 || now.getDay() === 6;
 
-  // Build set of locked product handles for filtering
-  const requiredHandles = lockedHandles || [];
-
-  // Filter bundles by season compatibility + locked product constraint
+  // Filter bundles by season compatibility
   const candidates = ragData.bundles.map((b, idx) => ({ bundle: b, idx }))
     .filter(({ bundle, idx }) => {
-      // Skip already seen
       if (seenBundleIndices.has(idx)) return false;
-      // Season match (toute-saison always matches)
       if (bundle.season !== season && bundle.season !== 'toute-saison') return false;
-      // Check items can be resolved to real products
       const resolved = resolveRAGItems(bundle.items, productMap);
       if (Object.values(resolved).filter(Boolean).length < 2) return false;
-      // Lock constraint: bundle must contain ALL locked products
-      if (requiredHandles.length > 0) {
-        const bundleHandles = Object.values(bundle.items)
-          .filter(Boolean).map(i => i.handle);
-        for (const rh of requiredHandles) {
-          if (!bundleHandles.includes(rh)) return false;
-        }
-      }
       return true;
     });
 
   if (candidates.length === 0) {
-    // If locked handles are too restrictive, relax by clearing seen
     if (seenBundleIndices.size > 0) {
       seenBundleIndices.clear();
-      return selectRAGBundle(ragData, productMap, weather, prefs, seenBundleIndices, direction, geminiDir, lockedHandles);
+      return selectRAGBundle(ragData, productMap, weather, prefs, seenBundleIndices, direction, geminiDir);
     }
-    // If still no candidates after clearing seen, no bundle matches the lock constraint
     return null;
   }
 
@@ -1155,46 +1131,6 @@ function extractRAGBundleAxes(ragBundle) {
   const total = ragBundle.total || 0;
   const avgPrice = total / Math.max(1, Object.keys(ragBundle.items).length);
   axes.priceRange.push(avgPrice < 100 ? 'budget' : avgPrice > 200 ? 'premium' : 'mid');
-  return axes;
-}
-
-// Extract axes from a single product (for Lock & Reroll signal)
-function extractItemAxes(product, ragBundle, slotKey) {
-  const axes = { style: [], color: [], silhouette: [], formality: [], priceRange: [] };
-  if (!product) return axes;
-
-  // If we have RAG data for this item, use it
-  if (ragBundle && ragBundle.items) {
-    const ragItem = ragBundle.items[slotKey.toLowerCase()];
-    if (ragItem && ragItem.colors) {
-      for (const c of ragItem.colors) {
-        if (!axes.color.includes(c)) axes.color.push(c);
-      }
-    }
-    // Bundle-level style/silhouette/formality still apply
-    if (ragBundle.style) axes.style.push(ragBundle.style);
-    if (ragBundle.silhouette) axes.silhouette.push(ragBundle.silhouette);
-    if (ragBundle.formality) axes.formality.push(ragBundle.formality);
-  }
-
-  // Color from product
-  const color = product._colorFamily || 'NOIR';
-  if (!axes.color.includes(color)) axes.color.push(color);
-
-  // Price
-  const price = parseFloat(product.priceRange?.minVariantPrice?.amount || '0');
-  const range = price < 100 ? 'budget' : price > 200 ? 'premium' : 'mid';
-  if (!axes.priceRange.includes(range)) axes.priceRange.push(range);
-
-  // Brand DNA
-  const vendor = product.vendor?.toUpperCase();
-  const brandMeta = BRAND_STYLE_MAP[vendor];
-  if (brandMeta) {
-    for (const s of brandMeta.styles) { if (!axes.style.includes(s)) axes.style.push(s); }
-    if (!axes.silhouette.includes(brandMeta.silhouette)) axes.silhouette.push(brandMeta.silhouette);
-    if (!axes.formality.includes(brandMeta.formality)) axes.formality.push(brandMeta.formality);
-  }
-
   return axes;
 }
 
@@ -1353,7 +1289,7 @@ function ProductSlot({ product, slotKey, isActive, onSwap }) {
 
 const SLOT_LABELS = { HAUT:'Haut', VESTE:'Veste', BAS:'Bas', CHAUSSURES:'Chaussures', ACCESSOIRE:'Accessoire' };
 
-function HeroBundle({ bundle, lockedSlots, heroSlot, onHeroChange, onLockToggle }) {
+function HeroBundle({ bundle, heroSlot, onHeroChange }) {
   const allSlots = useMemo(() => {
     const slots = [];
     if (bundle.items.veste) slots.push('VESTE');
@@ -1364,8 +1300,6 @@ function HeroBundle({ bundle, lockedSlots, heroSlot, onHeroChange, onLockToggle 
 
   const currentHero = heroSlot && bundle.items[heroSlot.toLowerCase()] ? heroSlot : allSlots[0];
   const heroProduct = bundle.items[currentHero.toLowerCase()];
-  const hasLocks = lockedSlots.size > 0;
-  const isHeroLocked = lockedSlots.has(currentHero);
 
   if (!heroProduct) return null;
 
@@ -1384,11 +1318,6 @@ function HeroBundle({ bundle, lockedSlots, heroSlot, onHeroChange, onLockToggle 
             </div>
             <div className="hero-price">{Math.round(getPrice(heroProduct))}€</div>
           </div>
-          <div className={`hero-lock-btn ${isHeroLocked ? 'locked' : ''}`}
-               onClick={(e) => { e.stopPropagation(); onLockToggle(currentHero); }}
-               title={isHeroLocked ? 'Déverrouiller' : 'Garder cette pièce'}>
-            <span>{isHeroLocked ? '🔒' : '🔓'}</span>
-          </div>
         </div>
       </div>
 
@@ -1397,23 +1326,19 @@ function HeroBundle({ bundle, lockedSlots, heroSlot, onHeroChange, onLockToggle 
           const p = bundle.items[slot.toLowerCase()];
           if (!p) return null;
           const isSelected = slot === currentHero;
-          const isLocked = lockedSlots.has(slot);
-          const dimmed = hasLocks && !isLocked;
           return (
             <div key={slot}
-                 className={`thumb-item ${isSelected ? 'selected' : ''} ${isLocked ? 'locked' : ''} ${dimmed ? 'unlocked-hint' : ''}`}
+                 className={`thumb-item ${isSelected ? 'selected' : ''}`}
                  onClick={(e) => { e.stopPropagation(); onHeroChange(slot); }}>
               <div className="thumb-img">
                 {getImage(p) && <img src={getImage(p)} alt={p.title} loading="lazy" draggable="false" />}
               </div>
               <div className="thumb-label">{SLOT_LABELS[slot]}</div>
               <div className="thumb-price">{Math.round(getPrice(p))}€</div>
-              {isLocked && <div className="lock-badge">🔒</div>}
             </div>
           );
         })}
       </div>
-      {hasLocks && <div className="lock-hint">Swipe pour changer les pièces non verrouillées</div>}
     </div>
   );
 }
@@ -1488,6 +1413,7 @@ function ProductDetailCard({ product, slotKey }) {
   if (!product) return null;
   const [detail, setDetail] = useState(null);
   const [activeImg, setActiveImg] = useState(0);
+  const [atcLoading, setAtcLoading] = useState(false);
   const scrollRef = useRef(null);
   const slotLabels = { HAUT:'Haut', VESTE:'Veste', BAS:'Bas', CHAUSSURES:'Chaussures', ACCESSOIRE:'Accessoire' };
 
@@ -1506,6 +1432,15 @@ function ProductDetailCard({ product, slotKey }) {
     const idx = Math.round(el.scrollLeft / (el.scrollWidth / images.length));
     setActiveImg(Math.min(idx, images.length - 1));
   }, [images.length]);
+
+  const handleAddToCart = useCallback(async () => {
+    setAtcLoading(true);
+    const checkoutUrl = await createShopifyCart([product]);
+    setAtcLoading(false);
+    if (checkoutUrl) {
+      window.open(checkoutUrl, '_blank');
+    }
+  }, [product]);
 
   return (
     <div className="detail-card">
@@ -1532,6 +1467,9 @@ function ProductDetailCard({ product, slotKey }) {
           {sizes.map((s, i) => <div key={i} className="detail-card-size">{s}</div>)}
         </div>
       )}
+      <button className="detail-card-atc" onClick={handleAddToCart} disabled={atcLoading}>
+        {atcLoading ? 'Ajout...' : 'Ajouter au panier'}
+      </button>
     </div>
   );
 }
@@ -1568,7 +1506,6 @@ function App() {
   const [contextInput, setContextInput] = useState('');
   const [cartLoading, setCartLoading] = useState(false);
   const [heroSlot, setHeroSlot] = useState(null);
-  const [lockedSlots, setLockedSlots] = useState(new Set());
 
   const dragRef = useRef({ startX: 0, startY: 0, dragging: false, startTime: 0 });
   const cardRef = useRef(null);
@@ -1629,21 +1566,9 @@ function App() {
     if (isAnimating || !catalog || !weather) return;
     setIsAnimating(true);
 
-
-    // Capture locked items before state changes
-    const currentLocked = new Set(lockedSlots);
-    const lockedItems = {};
-    if (currentLocked.size > 0 && currentBundle) {
-      for (const slot of currentLocked) {
-        const item = currentBundle.items[slot.toLowerCase()];
-        if (item) lockedItems[slot.toLowerCase()] = item;
-      }
-    }
-
     // Record signals + update Thompson preferences
     setUserSignals(prev => {
       const next = { ...prev, preferences: { ...prev.preferences } };
-      // Deep clone preference distributions
       for (const axis of Object.keys(next.preferences)) {
         next.preferences[axis] = { ...prev.preferences[axis] };
         for (const val of Object.keys(next.preferences[axis])) {
@@ -1652,7 +1577,6 @@ function App() {
       }
       if (currentBundle) {
         const entry = { items: currentBundle.items, timestamp: Date.now() };
-        // Update Thompson Sampling distributions — use RAG tags if available, else extract from brand
         const bundleAxes = currentRAGBundleRef.current
           ? extractRAGBundleAxes(currentRAGBundleRef.current)
           : extractBundleAxes(currentBundle);
@@ -1666,8 +1590,7 @@ function App() {
           });
         } else {
           next.swipeLefts = [...prev.swipeLefts, entry];
-          // Only avoid unlocked products
-          Object.entries(currentBundle.items).filter(([k, v]) => v && !currentLocked.has(k.toUpperCase())).forEach(([k, p]) => {
+          Object.values(currentBundle.items).filter(Boolean).forEach(p => {
             next.avoidedProducts = [...prev.avoidedProducts, p.handle];
           });
         }
@@ -1682,17 +1605,10 @@ function App() {
       setUserSignals(currentSignals => {
         let newBundle = null;
 
-        // Build locked product handles for RAG filtering
-        const lockedHandlesList = Object.entries(lockedItems)
-          .map(([slot, product]) => product?.handle)
-          .filter(Boolean);
-
-        // Try RAG bundle selection first (filtered by locked products)
         if (ragDataRef.current && productMapRef.current) {
           const selected = selectRAGBundle(
             ragDataRef.current, productMapRef.current, weather,
-            currentSignals.preferences, seenBundlesRef.current, direction,
-            null, lockedHandlesList
+            currentSignals.preferences, seenBundlesRef.current, direction
           );
           if (selected) {
             const resolvedItems = resolveRAGItems(selected.bundle.items, productMapRef.current);
@@ -1705,16 +1621,10 @@ function App() {
           }
         }
 
-        // Fallback to dynamic composition
         if (!newBundle) {
           currentRAGBundleRef.current = null;
           ragAlternativesRef.current = {};
           newBundle = composeBundle(catalog, weather, currentSignals, previousBundleRef.current, direction);
-        }
-
-        // Clear locks on right swipe (full accept)
-        if (direction === 'right') {
-          setLockedSlots(new Set());
         }
 
         previousBundleRef.current = newBundle;
@@ -1736,7 +1646,7 @@ function App() {
         return currentSignals;
       });
     }, 350);
-  }, [catalog, weather, currentBundle, isAnimating, lockedSlots]);
+  }, [catalog, weather, currentBundle, isAnimating]);
 
   // Nudge effect
   useEffect(() => {
@@ -1804,37 +1714,6 @@ function App() {
   const handleHeroChange = useCallback((slot) => {
     setHeroSlot(slot);
   }, []);
-
-  // Lock toggle for Lock & Reroll
-  const handleLockToggle = useCallback((slot) => {
-    setLockedSlots(prev => {
-      const next = new Set(prev);
-      if (next.has(slot)) {
-        next.delete(slot);
-      } else {
-        next.add(slot);
-        // Send strong positive TSMA signal for the locked item
-        const product = currentBundle?.items[slot.toLowerCase()];
-        if (product) {
-          setUserSignals(prevSignals => {
-            const next2 = { ...prevSignals, preferences: { ...prevSignals.preferences } };
-            for (const axis of Object.keys(next2.preferences)) {
-              next2.preferences[axis] = { ...prevSignals.preferences[axis] };
-              for (const val of Object.keys(next2.preferences[axis])) {
-                next2.preferences[axis][val] = { ...prevSignals.preferences[axis][val] };
-              }
-            }
-            // Extract axes from just this product and send a strong like signal
-            const itemAxes = extractItemAxes(product, currentRAGBundleRef.current, slot);
-            updatePreferences(next2.preferences, itemAxes, 'right');
-            return next2;
-          });
-        }
-      }
-      return next;
-    });
-  }, [currentBundle]);
-
 
   // CTA → create Shopify cart and redirect to checkout
   const handleCTA = useCallback(async () => {
@@ -1953,9 +1832,8 @@ function App() {
             <div className="editorial-note">"{editorial}"</div>
 
             <HeroBundle bundle={currentBundle}
-              lockedSlots={lockedSlots} heroSlot={heroSlot}
-              onHeroChange={handleHeroChange}
-              onLockToggle={handleLockToggle} />
+              heroSlot={heroSlot}
+              onHeroChange={handleHeroChange} />
 
             <div className="bundle-divider"></div>
 

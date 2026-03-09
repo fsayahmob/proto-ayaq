@@ -80,7 +80,7 @@ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .product-slot-price{font-size:.6rem;color:var(--accent);text-align:center;font-weight:400}
 
 /* ─── Hero + Thumbnails layout ─────────────────────────────────── */
-.hero-section{position:relative;width:100%;max-width:320px;margin:0 auto}
+.hero-section{position:relative;width:100%;max-width:340px;margin:0 auto}
 .hero-img-wrap{aspect-ratio:3/4;border-radius:12px;overflow:hidden;background:var(--bg-card-hover);
 position:relative;cursor:pointer}
 .hero-img-wrap img{width:100%;height:100%;object-fit:cover;display:block;
@@ -95,16 +95,15 @@ padding:14px 12px 10px;display:flex;justify-content:space-between;align-items:fl
 white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
 .hero-price{font-family:var(--font-serif);font-size:1.1rem;color:var(--accent);font-weight:500}
 
-.thumb-strip{display:flex;gap:6px;justify-content:center;padding:2px 0}
-.thumb-item{width:60px;cursor:pointer;position:relative;transition:transform .15s ease;
-border-radius:8px;overflow:visible}
+.thumb-strip{position:absolute;top:8px;left:8px;display:flex;flex-direction:column;
+gap:5px;z-index:3}
+.thumb-item{width:48px;cursor:pointer;position:relative;transition:transform .15s ease;
+border-radius:6px;overflow:visible}
 .thumb-item:active{transform:scale(.93)}
-.thumb-item.selected{outline:2px solid var(--accent);outline-offset:2px;border-radius:8px}
-.thumb-img{width:60px;height:80px;border-radius:8px;overflow:hidden;background:var(--bg-card-hover)}
+.thumb-item.selected{outline:2px solid var(--accent);outline-offset:1px;border-radius:6px}
+.thumb-img{width:48px;height:60px;border-radius:6px;overflow:hidden;
+background:var(--bg-card-hover);box-shadow:0 2px 8px rgba(0,0,0,.15)}
 .thumb-img img{width:100%;height:100%;object-fit:cover;display:block}
-.thumb-label{font-size:.55rem;color:var(--text-secondary);text-align:center;
-text-transform:uppercase;letter-spacing:.04em;margin-top:2px;line-height:1}
-.thumb-price{font-size:.55rem;color:var(--accent);text-align:center;font-weight:400}
 
 /* ─── Add-to-cart per product ──────────────────────────────────── */
 .detail-card-atc{margin-top:8px;padding:10px;border:1px solid var(--accent);
@@ -128,10 +127,11 @@ padding:0 4px}
 .swipe-hint{text-align:center;font-size:.6rem;color:var(--text-secondary);
 letter-spacing:.1em;opacity:.4;font-weight:300}
 
-.swipe-btn{width:44px;height:44px;border-radius:50%;border:1px solid var(--border);
-background:transparent;color:var(--text-secondary);font-size:1.1rem;cursor:pointer;
+.swipe-btn{width:52px;height:52px;border-radius:50%;border:1.5px solid var(--border);
+background:transparent;color:var(--text-secondary);font-size:1.4rem;cursor:pointer;
 display:flex;align-items:center;justify-content:center;transition:border-color .2s,color .2s;flex-shrink:0}
 .swipe-btn:hover{border-color:var(--accent);color:var(--accent)}
+.swipe-btn:active{transform:scale(.9)}
 
 .swipe-indicator{position:absolute;top:50%;transform:translateY(-50%);
 font-family:var(--font-serif);font-size:1.1rem;font-weight:500;
@@ -231,18 +231,9 @@ color:var(--text);transition:border-color .15s}
 font-size:.7rem;color:var(--text-secondary);transition:color .15s}
 .detail-card-swap:hover{color:var(--accent)}
 
-.llm-bar{flex-shrink:0;padding:6px 12px;padding-bottom:calc(6px + env(safe-area-inset-bottom,0px));
+.action-bar{flex-shrink:0;padding:8px 12px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));
 background:var(--bg);border-top:1px solid var(--border);z-index:10;
 display:flex;align-items:center;gap:8px}
-.llm-toggle{width:40px;height:40px;border-radius:50%;background:var(--accent);
-border:none;color:var(--bg);font-size:1rem;cursor:pointer;flex-shrink:0;
-display:flex;align-items:center;justify-content:center;transition:transform .2s}
-.llm-toggle:active{transform:scale(.9)}
-.llm-input-area{flex:1;display:flex;gap:8px;align-items:center;
-overflow:hidden;max-width:0;opacity:0;
-transition:max-width .35s cubic-bezier(.4,0,.2,1),opacity .25s ease}
-.llm-bar.expanded .llm-input-area{max-width:400px;opacity:1}
-.llm-bar.expanded .llm-toggle{background:var(--border);color:var(--text-secondary)}
 .context-input{flex:1;background:var(--bg-card);border:1px solid var(--border);
 border-radius:20px;padding:10px 16px;font-family:var(--font-sans);font-size:.8rem;
 color:var(--text);outline:none;transition:border-color .2s;min-width:0}
@@ -1302,40 +1293,35 @@ function HeroBundle({ bundle, heroSlot, onHeroChange }) {
   if (!heroProduct) return null;
 
   return (
-    <div>
-      <div className="hero-section">
-        <div className="hero-img-wrap">
-          {getImage(heroProduct, 600) && (
-            <img src={getImage(heroProduct, 600)} alt={heroProduct.title} draggable="false" />
-          )}
-          <div className="hero-info">
-            <div className="hero-info-left">
-              <div className="hero-slot-label">{SLOT_LABELS[currentHero]}</div>
-              <div className="hero-vendor">{heroProduct.vendor}</div>
-              <div className="hero-title">{heroProduct.title}</div>
-            </div>
-            <div className="hero-price">{Math.round(getPrice(heroProduct))}€</div>
-          </div>
-        </div>
-      </div>
-
-      <div className="thumb-strip">
-        {allSlots.map(slot => {
-          const p = bundle.items[slot.toLowerCase()];
-          if (!p) return null;
-          const isSelected = slot === currentHero;
-          return (
-            <div key={slot}
-                 className={`thumb-item ${isSelected ? 'selected' : ''}`}
-                 onClick={(e) => { e.stopPropagation(); onHeroChange(slot); }}>
-              <div className="thumb-img">
-                {getImage(p) && <img src={getImage(p)} alt={p.title} loading="lazy" draggable="false" />}
+    <div className="hero-section">
+      <div className="hero-img-wrap">
+        {getImage(heroProduct, 600) && (
+          <img src={getImage(heroProduct, 600)} alt={heroProduct.title} draggable="false" />
+        )}
+        <div className="thumb-strip">
+          {allSlots.map(slot => {
+            const p = bundle.items[slot.toLowerCase()];
+            if (!p) return null;
+            const isSelected = slot === currentHero;
+            return (
+              <div key={slot}
+                   className={`thumb-item ${isSelected ? 'selected' : ''}`}
+                   onClick={(e) => { e.stopPropagation(); onHeroChange(slot); }}>
+                <div className="thumb-img">
+                  {getImage(p) && <img src={getImage(p)} alt={p.title} loading="lazy" draggable="false" />}
+                </div>
               </div>
-              <div className="thumb-label">{SLOT_LABELS[slot]}</div>
-              <div className="thumb-price">{Math.round(getPrice(p))}€</div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
+        <div className="hero-info">
+          <div className="hero-info-left">
+            <div className="hero-slot-label">{SLOT_LABELS[currentHero]}</div>
+            <div className="hero-vendor">{heroProduct.vendor}</div>
+            <div className="hero-title">{heroProduct.title}</div>
+          </div>
+          <div className="hero-price">{Math.round(getPrice(heroProduct))}€</div>
+        </div>
       </div>
     </div>
   );
@@ -1502,7 +1488,6 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [isScrolled, setIsScrolled] = useState(false);
   const [contextInput, setContextInput] = useState('');
-  const [llmExpanded, setLlmExpanded] = useState(false);
   const [heroSlot, setHeroSlot] = useState(null);
 
   const dragRef = useRef({ startX: 0, startY: 0, dragging: false, startTime: 0 });
@@ -1854,27 +1839,23 @@ function App() {
         {nudge && <NudgeToast message={nudge} onDone={() => setNudge(null)} />}
       </div>
 
-      <div className={`llm-bar ${llmExpanded ? 'expanded' : ''}`}>
+      <div className="action-bar">
         <button className="swipe-btn" onClick={() => handleNewBundle('left')} title="Autre look">✕</button>
-        <button className="llm-toggle" onClick={() => setLlmExpanded(prev => !prev)}
-          title="Demander au styliste IA">✦</button>
-        <div className="llm-input-area">
-          {contextLoading ? (
-            <div className="context-loading">
-              <div className="loading-bar" style={{width:60}}><div className="loading-bar-inner"></div></div>
-              <span style={{fontSize:'.75rem',color:'var(--accent)',fontStyle:'italic'}}>Je compose...</span>
-            </div>
-          ) : (
-            <>
-              <input className="context-input" type="text" value={contextInput}
-                onChange={e => setContextInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleContextSubmit()}
-                placeholder="Un brunch, un date..." />
-              <button className="context-send" onClick={handleContextSubmit}
-                disabled={!contextInput.trim()}>→</button>
-            </>
-          )}
-        </div>
+        {contextLoading ? (
+          <div className="context-loading">
+            <div className="loading-bar" style={{width:60}}><div className="loading-bar-inner"></div></div>
+            <span style={{fontSize:'.75rem',color:'var(--accent)',fontStyle:'italic'}}>Je compose...</span>
+          </div>
+        ) : (
+          <>
+            <input className="context-input" type="text" value={contextInput}
+              onChange={e => setContextInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleContextSubmit()}
+              placeholder="Un brunch, un date ce soir..." />
+            <button className="context-send" onClick={handleContextSubmit}
+              disabled={!contextInput.trim()}>→</button>
+          </>
+        )}
         <button className="swipe-btn" onClick={() => handleNewBundle('right')} title="J'aime, encore">♥</button>
       </div>
 

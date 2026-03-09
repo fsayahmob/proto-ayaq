@@ -146,6 +146,45 @@ text-underline-offset:2px;margin-top:4px;display:inline-block}
 
 .detail-total{text-align:center;padding:20px 0;border-top:1px solid var(--border);margin-top:8px}
 .detail-total span{font-family:var(--font-serif);font-size:1.4rem;color:var(--accent)}
+
+.bottom-sheet-backdrop{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);
+z-index:40;animation:fadeIn .2s ease}
+.bottom-sheet{position:fixed;left:0;right:0;bottom:0;max-height:65vh;
+background:var(--bg-card);border-radius:16px 16px 0 0;border-top:1px solid var(--border);
+z-index:41;animation:sheetUp .3s cubic-bezier(.22,1,.36,1) forwards;
+overflow-y:auto;-webkit-overflow-scrolling:touch}
+.bottom-sheet.closing{animation:sheetDown .25s ease forwards}
+@keyframes sheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+@keyframes sheetDown{from{transform:translateY(0)}to{transform:translateY(100%)}}
+.sheet-handle{width:36px;height:4px;background:var(--text-secondary);border-radius:2px;
+margin:10px auto 6px;opacity:.4}
+.sheet-images{display:flex;gap:8px;padding:0 16px 12px;overflow-x:auto;scroll-snap-type:x mandatory;
+-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.sheet-images::-webkit-scrollbar{display:none}
+.sheet-images img{width:75%;max-width:280px;flex-shrink:0;aspect-ratio:3/4;object-fit:cover;
+border-radius:10px;scroll-snap-align:center}
+.sheet-info{padding:0 20px 20px}
+.sheet-vendor{font-size:.7rem;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
+.sheet-title{font-family:var(--font-serif);font-size:1.2rem;font-weight:400;color:var(--text);margin-bottom:4px}
+.sheet-price{font-size:1rem;color:var(--accent);font-weight:500;margin-bottom:12px}
+.sheet-desc{font-size:.8rem;color:var(--text-secondary);line-height:1.5;margin-bottom:14px;
+max-height:80px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical}
+.sheet-sizes-label{font-size:.65rem;color:var(--text-secondary);text-transform:uppercase;
+letter-spacing:.06em;margin-bottom:6px}
+.sheet-sizes{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.sheet-size{font-size:.75rem;padding:6px 12px;border:1px solid var(--border);border-radius:6px;
+color:var(--text);cursor:pointer;transition:border-color .15s,background .15s}
+.sheet-size:hover{border-color:var(--accent);background:var(--accent-soft)}
+.sheet-actions{display:flex;gap:8px}
+.sheet-btn{flex:1;padding:12px;border-radius:8px;font-family:var(--font-sans);font-size:.8rem;
+font-weight:500;cursor:pointer;text-align:center;transition:background .2s,color .2s}
+.sheet-btn-primary{background:var(--accent);color:var(--bg);border:none}
+.sheet-btn-secondary{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+.sheet-btn-primary:hover{opacity:.9}
+.sheet-btn-secondary:hover{background:var(--accent-soft)}
+.longpress-hint{position:absolute;bottom:3px;right:3px;width:16px;height:16px;
+border-radius:50%;background:rgba(201,169,110,.2);display:flex;align-items:center;
+justify-content:center;font-size:8px;color:var(--accent);pointer-events:none;opacity:.6}
 </style>
 </head>
 <body>
@@ -210,10 +249,10 @@ const PRODUCTS_QUERY = `query($cursor: String) {
   products(first: 250, after: $cursor) {
     pageInfo { hasNextPage endCursor }
     edges { node {
-      title handle productType vendor availableForSale
+      title handle productType vendor availableForSale description
       priceRange { minVariantPrice { amount currencyCode } }
-      images(first: 1) { edges { node { url altText } } }
-      variants(first: 5) { edges { node {
+      images(first: 5) { edges { node { url altText } } }
+      variants(first: 10) { edges { node {
         title availableForSale
         price { amount currencyCode }
         selectedOptions { name value }
@@ -404,6 +443,9 @@ function getPrice(p) {
 function getImage(p) {
   return p.images.edges.length > 0 ? p.images.edges[0].node.url : '';
 }
+function getAllImages(p) {
+  return p.images.edges.map(e => e.node.url);
+}
 function getSizes(p) {
   return p.variants.edges
     .filter(e => e.node.availableForSale)
@@ -509,13 +551,39 @@ function LoadingScreen() {
   );
 }
 
-function ProductSlot({ product, slotKey, isActive, onTap }) {
+function ProductSlot({ product, slotKey, isActive, onTap, onLongPress }) {
   if (!product) return null;
   const slotLabels = { HAUT:'Haut', VESTE:'Veste', BAS:'Bas', CHAUSSURES:'Chaussures', ACCESSOIRE:'Accessoire' };
+  const timerRef = useRef(null);
+  const longPressedRef = useRef(false);
+
+  const startPress = useCallback((e) => {
+    longPressedRef.current = false;
+    timerRef.current = setTimeout(() => {
+      longPressedRef.current = true;
+      onLongPress(product, slotKey);
+    }, 500);
+  }, [product, slotKey, onLongPress]);
+
+  const endPress = useCallback((e) => {
+    clearTimeout(timerRef.current);
+    if (!longPressedRef.current) {
+      onTap(slotKey);
+    }
+  }, [slotKey, onTap]);
+
+  const cancelPress = useCallback(() => {
+    clearTimeout(timerRef.current);
+  }, []);
+
   return (
-    <div className={`product-slot ${isActive ? 'active' : ''}`} onClick={() => onTap(slotKey)}>
+    <div className={`product-slot ${isActive ? 'active' : ''}`}
+         onTouchStart={startPress} onTouchEnd={endPress} onTouchCancel={cancelPress}
+         onMouseDown={startPress} onMouseUp={endPress} onMouseLeave={cancelPress}
+         onClick={(e) => e.stopPropagation()}>
       <div className="product-img-wrap">
-        {getImage(product) && <img src={getImage(product)} alt={product.title} loading="lazy" />}
+        {getImage(product) && <img src={getImage(product)} alt={product.title} loading="lazy" draggable="false" />}
+        <div className="longpress-hint">i</div>
       </div>
       <div className="product-slot-label">{slotLabels[slotKey]}</div>
       <div className="product-slot-brand">{product.vendor}</div>
@@ -581,6 +649,66 @@ function DetailOverlay({ bundle, onClose }) {
   );
 }
 
+function ProductBottomSheet({ product, onClose, shopDomain }) {
+  const [closing, setClosing] = useState(false);
+  const images = getAllImages(product);
+  const sizes = getSizes(product);
+  const price = Math.round(getPrice(product));
+  const desc = product.description || '';
+
+  const dismiss = useCallback(() => {
+    setClosing(true);
+    setTimeout(onClose, 250);
+  }, [onClose]);
+
+  // Swipe-down to dismiss
+  const sheetDragRef = useRef({ startY: 0, dragging: false });
+  const handleSheetTouchStart = (e) => {
+    sheetDragRef.current = { startY: e.touches[0].clientY, dragging: true };
+  };
+  const handleSheetTouchEnd = (e) => {
+    if (!sheetDragRef.current.dragging) return;
+    const dy = e.changedTouches[0].clientY - sheetDragRef.current.startY;
+    if (dy > 80) dismiss();
+    sheetDragRef.current.dragging = false;
+  };
+
+  return (
+    <>
+      <div className="bottom-sheet-backdrop" onClick={dismiss} />
+      <div className={`bottom-sheet ${closing ? 'closing' : ''}`}
+           onTouchStart={handleSheetTouchStart} onTouchEnd={handleSheetTouchEnd}>
+        <div className="sheet-handle" />
+        {images.length > 0 && (
+          <div className="sheet-images">
+            {images.map((url, i) => <img key={i} src={url} alt={`${product.title} ${i+1}`} />)}
+          </div>
+        )}
+        <div className="sheet-info">
+          <div className="sheet-vendor">{product.vendor}</div>
+          <div className="sheet-title">{product.title}</div>
+          <div className="sheet-price">{price}€</div>
+          {desc && <div className="sheet-desc">{desc}</div>}
+          {sizes.length > 0 && (
+            <>
+              <div className="sheet-sizes-label">Tailles disponibles</div>
+              <div className="sheet-sizes">
+                {sizes.map((s, i) => <div key={i} className="sheet-size">{s}</div>)}
+              </div>
+            </>
+          )}
+          <div className="sheet-actions">
+            <a className="sheet-btn sheet-btn-primary"
+               href={`https://${shopDomain}/products/${product.handle}`}
+               target="_blank" rel="noopener">Voir sur le shop</a>
+            <button className="sheet-btn sheet-btn-secondary" onClick={dismiss}>Fermer</button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function NudgeToast({ message, onDone }) {
   const [exiting, setExiting] = useState(false);
   useEffect(() => {
@@ -609,6 +737,7 @@ function App() {
   const [bundleCount, setBundleCount] = useState(0);
   const [nudge, setNudge] = useState(null);
   const [expanded, setExpanded] = useState(false);
+  const [sheetProduct, setSheetProduct] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const dragRef = useRef({ startX: 0, startY: 0, dragging: false, startTime: 0 });
@@ -737,6 +866,11 @@ function App() {
   const onMouseMove = useCallback(e => { if (dragRef.current.dragging) handleDragMove(e.clientX); }, [handleDragMove]);
   const onMouseUp = useCallback(e => handleDragEnd(e.clientX), [handleDragEnd]);
 
+  // Long press → product detail sheet
+  const handleLongPress = useCallback((product, slot) => {
+    setSheetProduct(product);
+  }, []);
+
   // Slot tap
   const handleSlotTap = useCallback((slot) => {
     if (isAnimating || Math.abs(swipeOffset) > 5) return;
@@ -823,14 +957,14 @@ function App() {
               {slotOrder.map(slot => (
                 <ProductSlot key={slot} product={currentBundle.items[slot.toLowerCase()]}
                   slotKey={slot} isActive={activeSlot === slot}
-                  onTap={handleSlotTap} />
+                  onTap={handleSlotTap} onLongPress={handleLongPress} />
               ))}
             </div>
             <div className="products-grid">
               {row2.map(slot => (
                 <ProductSlot key={slot} product={currentBundle.items[slot.toLowerCase()]}
                   slotKey={slot} isActive={activeSlot === slot}
-                  onTap={handleSlotTap} />
+                  onTap={handleSlotTap} onLongPress={handleLongPress} />
               ))}
             </div>
 
@@ -858,6 +992,8 @@ function App() {
       </div>
 
       {expanded && <DetailOverlay bundle={currentBundle} onClose={() => setExpanded(false)} />}
+      {sheetProduct && <ProductBottomSheet product={sheetProduct} shopDomain={SHOPIFY_DOMAIN}
+        onClose={() => setSheetProduct(null)} />}
     </div>
   );
 }

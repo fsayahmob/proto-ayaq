@@ -49,14 +49,16 @@ height:100%;gap:24px}
 .app-container{max-width:430px;margin:0 auto;height:100%;display:flex;flex-direction:column;
 position:relative;overflow:hidden}
 
-.context-bar{padding:12px 20px 4px;text-align:center;flex-shrink:0;position:relative;z-index:10;
-display:flex;align-items:center;justify-content:space-between}
-.context-left{text-align:left}
-.context-line{font-family:var(--font-serif);font-size:.95rem;font-weight:400;color:var(--text);letter-spacing:.03em}
-.context-weather{font-size:.75rem;color:var(--text-secondary);margin-top:1px;font-weight:300}
-.logo{font-family:var(--font-serif);font-size:.75rem;letter-spacing:.25em;color:var(--accent);
-text-transform:uppercase}
-.look-counter{font-size:.75rem;color:var(--text-secondary);font-weight:300;margin-top:2px;text-align:right}
+.context-bar{padding:14px 20px 8px;text-align:center;flex-shrink:0;position:relative;z-index:10;
+display:flex;flex-direction:column;align-items:center;gap:2px;
+border-bottom:1px solid var(--border)}
+.logo{font-family:var(--font-serif);font-size:1.3rem;letter-spacing:.3em;color:var(--text);
+text-transform:uppercase;font-weight:400}
+.context-sub{display:flex;align-items:center;gap:8px}
+.context-line{font-size:.75rem;font-weight:300;color:var(--text-secondary);letter-spacing:.03em}
+.context-weather{font-size:.75rem;color:var(--text-secondary);font-weight:300}
+.context-dot{width:3px;height:3px;border-radius:50%;background:var(--border)}
+.look-counter{font-size:.75rem;color:var(--text-secondary);font-weight:300}
 
 .card-area{flex:1;position:relative;overflow:hidden;padding:0 12px 0}
 
@@ -1771,15 +1773,13 @@ function App() {
     <div className="app-container"
          onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
       <div className="context-bar">
-        <div className="context-left">
-          <a href="recherche-concurrentielle-configurateurs-ia.tex" target="_blank"
-            title="TSMA Research Paper (LaTeX)"
-            style={{textDecoration:'none',color:'inherit'}}><div className="logo">ISCIACUS</div></a>
-          <div className="context-line">{dayName} {period} · {weather.temp}° · Paris</div>
-          <div className="context-weather">{weatherLabel}</div>
-        </div>
-        <div>
-          <div className="look-counter">Look #{bundleCount + 1}</div>
+        <div className="logo">ISCIACUS</div>
+        <div className="context-sub">
+          <div className="context-line">{dayName} {period}</div>
+          <div className="context-dot"></div>
+          <div className="context-weather">{weather.temp}° {weatherLabel}</div>
+          <div className="context-dot"></div>
+          <div className="look-counter">Look {bundleCount + 1}</div>
         </div>
       </div>
 

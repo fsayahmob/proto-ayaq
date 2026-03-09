@@ -643,25 +643,66 @@ const BRAND_STYLE_MAP = {
   'THE MERCER BRAND': { styles: ['minimal','elevated'], silhouette: 'regular', formality: 'smart-casual' },
 };
 
-// Update preferences after a swipe — fractional credit assignment
-function updatePreferences(prefs, bundleAxes, direction) {
-  // Count total axis-value pairs to normalize credit
-  // Each swipe injects exactly 1.0 total information, split across all axes
-  let totalPairs = 0;
-  for (const [axis, values] of Object.entries(bundleAxes)) {
-    totalPairs += values.length;
+// IDF weights — computed once at init, amplifies rare axis values
+let _idfWeights = null;
+function getIdfWeights(bundles) {
+  if (_idfWeights) return _idfWeights;
+  const N = bundles.length;
+  const freq = {};
+  for (const [axis, values] of Object.entries(PREFERENCE_AXES)) {
+    freq[axis] = {};
+    for (const v of values) freq[axis][v] = 0;
   }
-  if (totalPairs === 0) return prefs;
-  const credit = 1.0 / totalPairs;
+  for (const bundle of bundles) {
+    if (bundle.style && freq.style[bundle.style] !== undefined) freq.style[bundle.style]++;
+    if (bundle.silhouette && freq.silhouette[bundle.silhouette] !== undefined) freq.silhouette[bundle.silhouette]++;
+    if (bundle.formality && freq.formality[bundle.formality] !== undefined) freq.formality[bundle.formality]++;
+    for (const item of Object.values(bundle.items || {})) {
+      for (const c of (item.colors || [])) {
+        if (freq.color[c] !== undefined) freq.color[c]++;
+      }
+      const price = item.price || 0;
+      const range = price < 100 ? 'budget' : price > 200 ? 'premium' : 'mid';
+      if (freq.priceRange[range] !== undefined) freq.priceRange[range]++;
+    }
+  }
+  _idfWeights = {};
+  for (const [axis, counts] of Object.entries(freq)) {
+    _idfWeights[axis] = {};
+    for (const [v, count] of Object.entries(counts)) {
+      _idfWeights[axis][v] = count > 0 ? Math.log(1 + N / count) : 0;
+    }
+  }
+  return _idfWeights;
+}
 
+// Update preferences after a swipe — IDF-weighted contrastive credit assignment
+const CONTRASTIVE_WEIGHT = 0.2;
+function updatePreferences(prefs, bundleAxes, direction) {
   for (const [axis, values] of Object.entries(bundleAxes)) {
     if (!prefs[axis]) continue;
-    for (const v of values) {
+    const credit = values.length > 0 ? 1.0 / values.length : 0;
+    const allValues = PREFERENCE_AXES[axis] || [];
+    const idf = _idfWeights?.[axis] || {};
+
+    for (const v of allValues) {
       if (!prefs[axis][v]) continue;
+      const w = idf[v] || 0;
+      if (w === 0) continue; // value never appears in corpus
+      const inBundle = values.includes(v);
+
       if (direction === 'right') {
-        prefs[axis][v].alpha += credit;
+        if (inBundle) {
+          prefs[axis][v].alpha += credit * w;
+        } else {
+          prefs[axis][v].beta += credit * CONTRASTIVE_WEIGHT;
+        }
       } else {
-        prefs[axis][v].beta += credit;
+        if (inBundle) {
+          prefs[axis][v].beta += credit * w;
+        } else {
+          prefs[axis][v].alpha += credit * CONTRASTIVE_WEIGHT;
+        }
       }
     }
   }
@@ -1388,6 +1429,7 @@ function App() {
       let bundle = null;
       if (ragJson && ragJson.bundles && ragJson.bundles.length > 0) {
         ragDataRef.current = ragJson;
+        getIdfWeights(ragJson.bundles); // precompute IDF weights for credit assignment
         const selected = selectRAGBundle(ragJson, pMap, w, userSignals.preferences, seenBundlesRef.current, 'right');
         if (selected) {
           const resolvedItems = resolveRAGItems(selected.bundle.items, pMap);

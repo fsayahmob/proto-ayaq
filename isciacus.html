@@ -128,16 +128,6 @@ padding:0 4px}
 .swipe-hint{text-align:center;font-size:.6rem;color:var(--text-secondary);
 letter-spacing:.1em;opacity:.4;font-weight:300}
 
-.bottom-bar{flex-shrink:0;padding:8px 12px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));
-background:var(--bg);border-top:1px solid var(--border);display:flex;gap:8px;z-index:10}
-.cta-button{flex:1;padding:13px;border:1px solid var(--accent);
-background:transparent;color:var(--accent);font-family:var(--font-sans);font-size:.8rem;
-font-weight:500;letter-spacing:.08em;border-radius:8px;cursor:pointer;
-transition:background .2s,color .2s;text-align:center;text-transform:uppercase}
-.cta-button:hover{background:var(--accent);color:var(--bg)}
-.cta-button.primary{background:var(--accent);color:var(--bg);border-color:var(--accent)}
-.cta-button:disabled{opacity:.5;cursor:wait}
-.cta-button.primary:hover{opacity:.9}
 .swipe-btn{width:44px;height:44px;border-radius:50%;border:1px solid var(--border);
 background:transparent;color:var(--text-secondary);font-size:1.1rem;cursor:pointer;
 display:flex;align-items:center;justify-content:center;transition:border-color .2s,color .2s;flex-shrink:0}
@@ -240,22 +230,29 @@ color:var(--text);transition:border-color .15s}
 font-size:.7rem;color:var(--text-secondary);transition:color .15s}
 .detail-card-swap:hover{color:var(--accent)}
 
-.context-input-bar{flex-shrink:0;padding:6px 12px;background:var(--bg);
-border-top:1px solid var(--border);z-index:10}
-.context-input-wrap{display:flex;gap:8px;align-items:center}
+.llm-bar{flex-shrink:0;padding:6px 12px;padding-bottom:calc(6px + env(safe-area-inset-bottom,0px));
+background:var(--bg);border-top:1px solid var(--border);z-index:10;
+display:flex;align-items:center;gap:8px}
+.llm-toggle{width:40px;height:40px;border-radius:50%;background:var(--accent);
+border:none;color:var(--bg);font-size:1rem;cursor:pointer;flex-shrink:0;
+display:flex;align-items:center;justify-content:center;transition:transform .2s}
+.llm-toggle:active{transform:scale(.9)}
+.llm-input-area{flex:1;display:flex;gap:8px;align-items:center;
+overflow:hidden;max-width:0;opacity:0;
+transition:max-width .35s cubic-bezier(.4,0,.2,1),opacity .25s ease}
+.llm-bar.expanded .llm-input-area{max-width:400px;opacity:1}
+.llm-bar.expanded .llm-toggle{background:var(--border);color:var(--text-secondary)}
 .context-input{flex:1;background:var(--bg-card);border:1px solid var(--border);
 border-radius:20px;padding:10px 16px;font-family:var(--font-sans);font-size:.8rem;
-color:var(--text);outline:none;transition:border-color .2s}
+color:var(--text);outline:none;transition:border-color .2s;min-width:0}
 .context-input:focus{border-color:var(--accent)}
 .context-input::placeholder{color:var(--text-secondary);font-style:italic;font-size:.75rem}
 .context-send{width:36px;height:36px;border-radius:50%;background:var(--accent);
 border:none;color:var(--bg);font-size:.9rem;cursor:pointer;flex-shrink:0;
 display:flex;align-items:center;justify-content:center;transition:opacity .2s}
 .context-send:disabled{opacity:.3;cursor:default}
-.context-loading{display:flex;align-items:center;gap:10px;justify-content:center;padding:4px 0}
-.context-loading-text{font-family:var(--font-serif);font-size:.9rem;color:var(--accent);
-margin-bottom:10px;font-style:italic}
-.context-loading .loading-bar{width:80px;margin:0 auto}
+.context-loading{display:flex;align-items:center;gap:10px;justify-content:center;padding:4px 0;flex:1}
+.context-loading .loading-bar{width:80px}
 </style>
 </head>
 <body>
@@ -1504,7 +1501,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [isScrolled, setIsScrolled] = useState(false);
   const [contextInput, setContextInput] = useState('');
-  const [cartLoading, setCartLoading] = useState(false);
+  const [llmExpanded, setLlmExpanded] = useState(false);
   const [heroSlot, setHeroSlot] = useState(null);
 
   const dragRef = useRef({ startX: 0, startY: 0, dragging: false, startTime: 0 });
@@ -1713,20 +1710,6 @@ function App() {
     setHeroSlot(slot);
   }, []);
 
-  // CTA → create Shopify cart and redirect to checkout
-  const handleCTA = useCallback(async () => {
-    setCartLoading(true);
-    const items = Object.values(currentBundle.items).filter(Boolean);
-    const checkoutUrl = await createShopifyCart(items);
-    setCartLoading(false);
-    if (checkoutUrl) {
-      window.open(checkoutUrl, '_blank');
-    } else {
-      // Fallback: open detail overlay
-      setExpanded(true);
-    }
-  }, [currentBundle]);
-
   // Context input submit
   const [contextLoading, setContextLoading] = useState(false);
   const handleContextSubmit = useCallback(async () => {
@@ -1870,29 +1853,27 @@ function App() {
         {nudge && <NudgeToast message={nudge} onDone={() => setNudge(null)} />}
       </div>
 
-      <div className="context-input-bar">
-        {contextLoading ? (
-          <div className="context-loading">
-            <div className="loading-bar" style={{width:60}}><div className="loading-bar-inner"></div></div>
-            <span style={{fontSize:'.75rem',color:'var(--accent)',fontStyle:'italic'}}>Je compose ton look...</span>
-          </div>
-        ) : (
-          <div className="context-input-wrap">
-            <input className="context-input" type="text" value={contextInput}
-              onChange={e => setContextInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleContextSubmit()}
-              placeholder="Un brunch dimanche, un date ce soir..." />
-            <button className="context-send" onClick={handleContextSubmit}
-              disabled={!contextInput.trim()}>→</button>
-          </div>
-        )}
-      </div>
-
-      <div className="bottom-bar">
+      <div className={`llm-bar ${llmExpanded ? 'expanded' : ''}`}>
         <button className="swipe-btn" onClick={() => handleNewBundle('left')} title="Autre look">✕</button>
-        <button className="cta-button primary" onClick={handleCTA} disabled={cartLoading}>
-          {cartLoading ? 'Ajout au panier...' : 'Je prends ce look'}
-        </button>
+        <button className="llm-toggle" onClick={() => setLlmExpanded(prev => !prev)}
+          title="Demander au styliste IA">✦</button>
+        <div className="llm-input-area">
+          {contextLoading ? (
+            <div className="context-loading">
+              <div className="loading-bar" style={{width:60}}><div className="loading-bar-inner"></div></div>
+              <span style={{fontSize:'.75rem',color:'var(--accent)',fontStyle:'italic'}}>Je compose...</span>
+            </div>
+          ) : (
+            <>
+              <input className="context-input" type="text" value={contextInput}
+                onChange={e => setContextInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleContextSubmit()}
+                placeholder="Un brunch, un date..." />
+              <button className="context-send" onClick={handleContextSubmit}
+                disabled={!contextInput.trim()}>→</button>
+            </>
+          )}
+        </div>
         <button className="swipe-btn" onClick={() => handleNewBundle('right')} title="J'aime, encore">♥</button>
       </div>
 

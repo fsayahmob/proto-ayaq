@@ -27,7 +27,10 @@ respirant, actif, effort, leger, ultraléger,
 chaleur, polaire, merinos, duvet, isolation,
 base, mid, outer, pants,
 debutant, regulier, expert, technique, competition,
-durable, confort, stretch, thermique
+durable, confort, stretch, thermique,
+tshirt, manches-courtes, manches-longues, sous-vetement,
+veste, fleece, gilet, vest, doudoune, windbreaker,
+pantalon
 
 Règles d'inférence :
 - "rando", "marche", "trek" → activity = "hiking", tags incluent "hiking","polyvalent"
@@ -42,10 +45,16 @@ Règles d'inférence :
 - "effort intense", "transpiration" → condition = "intense", tags incluent "respirant","actif","effort"
 - "débute", "commence", "premier" → level = "beginner", tags incluent "debutant","polyvalent","confort"
 - "expert", "expédition", "compétition" → level = "expert", tags incluent "expert","technique","extreme"
-- "base layer", "sous-vêtement", "mérinos" → tags incluent "base","merinos"
-- "polaire", "doudoune", "mid layer" → tags incluent "mid","polaire","chaleur"
-- "hardshell", "veste", "gore-tex" → tags incluent "outer","hardshell","imperméable"
-- "pantalon" → tags incluent "pants"
+- "base layer", "sous-vêtement", "mérinos", "première couche" → tags incluent "base","merinos","sous-vetement"
+- "t-shirt", "tshirt", "manches courtes" → tags incluent "tshirt","manches-courtes","base"
+- "manches longues", "longsleeve" → tags incluent "manches-longues","base"
+- "polaire", "fleece" → tags incluent "mid","polaire","fleece","veste"
+- "doudoune", "down", "primaloft" → tags incluent "mid","doudoune","isolation","veste"
+- "gilet", "vest", "sans manches" → tags incluent "mid","gilet","vest"
+- "coupe-vent", "windbreaker" → tags incluent "outer","coupe-vent","windbreaker","veste"
+- "hardshell", "veste imperméable", "gore-tex" → tags incluent "outer","hardshell","imperméable","veste"
+- "veste" → tags incluent "veste","outer"
+- "pantalon", "pants" → tags incluent "pants","pantalon"
 
 Si une info manque, utilise la valeur la plus probable.
 

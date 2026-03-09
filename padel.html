@@ -600,38 +600,56 @@ function App(){
     return null;
   };
 
-  /* Setup IntersectionObserver for dwell tracking */
+  /* Lazy-init IntersectionObserver (avoids timing issue with callback refs) */
+  const getOrCreateObserver=()=>{
+    if(!feedObserverRef.current){
+      feedObserverRef.current=new IntersectionObserver((entries)=>{
+        entries.forEach(entry=>{
+          const id=entry.target.dataset.feedId;
+          if(!id) return;
+          if(entry.isIntersecting){
+            feedTimers.current[id]={...(feedTimers.current[id]||{total:0,triggered:false}),start:Date.now()};
+          }else if(feedTimers.current[id]?.start){
+            const elapsed=Date.now()-feedTimers.current[id].start;
+            feedTimers.current[id].total+=elapsed;
+            feedTimers.current[id].start=null;
+          }
+        });
+      },{threshold:0.4});
+    }
+    return feedObserverRef.current;
+  };
+
+  /* Cleanup observer on unmount */
+  useEffect(()=>()=>feedObserverRef.current?.disconnect(),[]);
+
+  /* Periodic check: detect 3s+ dwell on VISIBLE products (not just on leave) */
   useEffect(()=>{
-    feedObserverRef.current=new IntersectionObserver((entries)=>{
-      entries.forEach(entry=>{
-        const id=entry.target.dataset.feedId;
-        if(!id) return;
-        if(entry.isIntersecting){
-          feedTimers.current[id]={...(feedTimers.current[id]||{total:0,triggered:false}),start:Date.now()};
-        }else if(feedTimers.current[id]?.start){
-          const elapsed=Date.now()-feedTimers.current[id].start;
-          feedTimers.current[id].total+=elapsed;
-          feedTimers.current[id].start=null;
-          if(feedTimers.current[id].total>=3000&&!feedTimers.current[id].triggered){
-            feedTimers.current[id].triggered=true;
-            const product=allProducts.find(p=>p.id===id);
-            if(product){
-              setFeedInterests(prev=>{
-                if(prev.find(x=>x.id===id)) return prev;
-                return[...prev,{id,brand:product.brand,price:product.price,cat:product.cat,name:product.name,sc:product.sc}];
-              });
-            }
+    const interval=setInterval(()=>{
+      let changed=false;
+      Object.entries(feedTimers.current).forEach(([id,timer])=>{
+        if(timer.triggered) return;
+        const elapsed=timer.total+(timer.start?Date.now()-timer.start:0);
+        if(elapsed>=3000){
+          timer.triggered=true;
+          changed=true;
+          const product=allProducts.find(p=>p.id===id);
+          if(product){
+            setFeedInterests(prev=>{
+              if(prev.find(x=>x.id===id)) return prev;
+              return[...prev,{id,brand:product.brand,price:product.price,cat:product.cat,name:product.name,sc:product.sc}];
+            });
           }
         }
       });
-    },{threshold:0.4});
-    return()=>feedObserverRef.current?.disconnect();
+    },1000);
+    return()=>clearInterval(interval);
   },[allProducts]);
 
-  /* Callback ref to observe feed cards */
+  /* Callback ref to observe feed cards — uses lazy observer */
   const feedCardRef=useCallback((el)=>{
-    if(el&&feedObserverRef.current&&!observedFeedEls.current.has(el)){
-      feedObserverRef.current.observe(el);
+    if(el&&!observedFeedEls.current.has(el)){
+      getOrCreateObserver().observe(el);
       observedFeedEls.current.add(el);
     }
   },[]);

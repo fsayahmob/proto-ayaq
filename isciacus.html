@@ -142,11 +142,20 @@ display:flex;align-items:center;justify-content:center;transition:border-color .
 .swipe-btn:hover{border-color:var(--accent);color:var(--accent)}
 .swipe-btn:active{transform:scale(.9)}
 
-.swipe-indicator{position:absolute;top:50%;transform:translateY(-50%);
-font-family:var(--font-serif);font-size:1.1rem;font-weight:500;
-pointer-events:none;opacity:0;transition:opacity .15s;z-index:25}
-.swipe-indicator.left{left:8px;color:var(--reject)}
-.swipe-indicator.right{right:8px;color:var(--success)}
+.swipe-stamp{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) scale(0);
+pointer-events:none;z-index:25;opacity:0;transition:none}
+.swipe-stamp.visible{animation:stampPop .4s cubic-bezier(.2,.8,.3,1.2) forwards}
+@keyframes stampPop{
+0%{opacity:0;transform:translate(-50%,-50%) scale(0) rotate(-15deg)}
+50%{opacity:1;transform:translate(-50%,-50%) scale(1.15) rotate(5deg)}
+100%{opacity:.85;transform:translate(-50%,-50%) scale(1) rotate(0)}}
+.swipe-stamp-icon{font-size:5rem;filter:drop-shadow(0 4px 20px rgba(0,0,0,.15))}
+.swipe-stamp.like .swipe-stamp-icon{color:var(--success)}
+.swipe-stamp.nope .swipe-stamp-icon{color:var(--reject)}
+.swipe-stamp-ring{width:100px;height:100px;border-radius:50%;
+border:3px solid currentColor;display:flex;align-items:center;justify-content:center}
+.swipe-stamp.like .swipe-stamp-ring{border-color:var(--success);color:var(--success)}
+.swipe-stamp.nope .swipe-stamp-ring{border-color:var(--reject);color:var(--reject)}
 
 .alternatives-panel{position:sticky;bottom:0;left:0;right:0;
 background:linear-gradient(to top,var(--bg-card) 90%,transparent);
@@ -1497,6 +1506,7 @@ function App() {
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isScrolled, setIsScrolled] = useState(false);
+  const [swipeStamp, setSwipeStamp] = useState(null);
   const [contextInput, setContextInput] = useState('');
   const [heroSlot, setHeroSlot] = useState(null);
 
@@ -1558,6 +1568,7 @@ function App() {
   const handleNewBundle = useCallback((direction) => {
     if (isAnimating || !catalog || !weather) return;
     setIsAnimating(true);
+    setSwipeStamp(direction === 'right' ? 'like' : 'nope');
 
     // Record signals + update Thompson preferences
     setUserSignals(prev => {
@@ -1623,11 +1634,11 @@ function App() {
         previousBundleRef.current = newBundle;
         setCurrentBundle(newBundle);
         setSwipeOffset(0);
+        setSwipeStamp(null);
         setEnterFrom(direction === 'right' ? -150 : 150);
         setEntering(true);
         setBundleCount(c => c + 1);
         setIsScrolled(false);
-        setHeroSlot(null);
         if (cardRef.current) cardRef.current.scrollTop = 0;
 
         setTimeout(() => {
@@ -1800,8 +1811,6 @@ function App() {
   // Use RAG editorial if available, otherwise generate dynamically
   const editorial = currentBundle.editorial || generateEditorial(currentBundle, weather, style);
 
-  const leftIndicatorOpacity = swipeOffset < -30 ? Math.min(1, (-swipeOffset - 30) / 70) : 0;
-  const rightIndicatorOpacity = swipeOffset > 30 ? Math.min(1, (swipeOffset - 30) / 70) : 0;
 
   const itemCount = Object.values(currentBundle.items).filter(Boolean).length;
 
@@ -1863,11 +1872,12 @@ function App() {
           </div>
         </div>
 
-        {!isScrolled && (
-          <>
-            <div className="swipe-indicator left" style={{ opacity: leftIndicatorOpacity }}>← Autre chose</div>
-            <div className="swipe-indicator right" style={{ opacity: rightIndicatorOpacity }}>J'aime →</div>
-          </>
+        {swipeStamp && (
+          <div className={`swipe-stamp visible ${swipeStamp}`}>
+            <div className="swipe-stamp-ring">
+              <div className="swipe-stamp-icon">{swipeStamp === 'like' ? '♥' : '✕'}</div>
+            </div>
+          </div>
         )}
 
         {nudge && <NudgeToast message={nudge} onDone={() => setNudge(null)} />}

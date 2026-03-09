@@ -112,6 +112,13 @@ text-transform:uppercase;letter-spacing:.04em;margin-top:2px;line-height:1}
 .lock-badge{position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;
 background:var(--accent);display:flex;align-items:center;justify-content:center;
 font-size:9px;color:var(--bg);z-index:3;animation:fadeIn .2s ease;line-height:1}
+.hero-lock-btn{position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;
+background:rgba(10,10,10,.6);border:1px solid rgba(255,255,255,.15);
+display:flex;align-items:center;justify-content:center;font-size:15px;
+cursor:pointer;z-index:4;transition:background .2s,border-color .2s,transform .15s;
+-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.hero-lock-btn:active{transform:scale(.9)}
+.hero-lock-btn.locked{background:var(--accent);border-color:var(--accent)}
 .lock-hint{text-align:center;font-size:.55rem;color:var(--accent);opacity:.6;
 letter-spacing:.06em;margin-top:-2px;animation:fadeIn .3s ease}
 
@@ -1016,7 +1023,7 @@ function currentSeason(temp) {
 }
 
 // Select best bundle from RAG using Thompson Sampling
-function selectRAGBundle(ragData, productMap, weather, prefs, seenBundleIndices, direction, geminiDir) {
+function selectRAGBundle(ragData, productMap, weather, prefs, seenBundleIndices, direction, geminiDir, lockedHandles) {
   if (!ragData || !ragData.bundles || ragData.bundles.length === 0) return null;
 
   const season = currentSeason(weather.temp);
@@ -1024,7 +1031,10 @@ function selectRAGBundle(ragData, productMap, weather, prefs, seenBundleIndices,
   const hour = now.getHours();
   const isWeekend = now.getDay() === 0 || now.getDay() === 6;
 
-  // Filter bundles by season compatibility
+  // Build set of locked product handles for filtering
+  const requiredHandles = lockedHandles || [];
+
+  // Filter bundles by season compatibility + locked product constraint
   const candidates = ragData.bundles.map((b, idx) => ({ bundle: b, idx }))
     .filter(({ bundle, idx }) => {
       // Skip already seen
@@ -1034,13 +1044,25 @@ function selectRAGBundle(ragData, productMap, weather, prefs, seenBundleIndices,
       // Check items can be resolved to real products
       const resolved = resolveRAGItems(bundle.items, productMap);
       if (Object.values(resolved).filter(Boolean).length < 2) return false;
+      // Lock constraint: bundle must contain ALL locked products
+      if (requiredHandles.length > 0) {
+        const bundleHandles = Object.values(bundle.items)
+          .filter(Boolean).map(i => i.handle);
+        for (const rh of requiredHandles) {
+          if (!bundleHandles.includes(rh)) return false;
+        }
+      }
       return true;
     });
 
   if (candidates.length === 0) {
-    // Reset seen bundles if we've exhausted them all
-    seenBundleIndices.clear();
-    return selectRAGBundle(ragData, productMap, weather, prefs, seenBundleIndices, direction, geminiDir);
+    // If locked handles are too restrictive, relax by clearing seen
+    if (seenBundleIndices.size > 0) {
+      seenBundleIndices.clear();
+      return selectRAGBundle(ragData, productMap, weather, prefs, seenBundleIndices, direction, geminiDir, lockedHandles);
+    }
+    // If still no candidates after clearing seen, no bundle matches the lock constraint
+    return null;
   }
 
   // Contextual occasion bonus
@@ -1331,7 +1353,7 @@ function ProductSlot({ product, slotKey, isActive, onSwap }) {
 
 const SLOT_LABELS = { HAUT:'Haut', VESTE:'Veste', BAS:'Bas', CHAUSSURES:'Chaussures', ACCESSOIRE:'Accessoire' };
 
-function HeroBundle({ bundle, activeSlot, lockedSlots, heroSlot, onHeroChange, onSlotTap, onLockToggle }) {
+function HeroBundle({ bundle, lockedSlots, heroSlot, onHeroChange, onLockToggle }) {
   const allSlots = useMemo(() => {
     const slots = [];
     if (bundle.items.veste) slots.push('VESTE');
@@ -1350,7 +1372,7 @@ function HeroBundle({ bundle, activeSlot, lockedSlots, heroSlot, onHeroChange, o
   return (
     <div>
       <div className="hero-section">
-        <div className="hero-img-wrap" onClick={(e) => { e.stopPropagation(); onSlotTap(currentHero); }}>
+        <div className="hero-img-wrap">
           {getImage(heroProduct, 600) && (
             <img src={getImage(heroProduct, 600)} alt={heroProduct.title} draggable="false" />
           )}
@@ -1362,7 +1384,11 @@ function HeroBundle({ bundle, activeSlot, lockedSlots, heroSlot, onHeroChange, o
             </div>
             <div className="hero-price">{Math.round(getPrice(heroProduct))}€</div>
           </div>
-          {isHeroLocked && <div className="lock-badge" style={{position:'absolute',top:10,right:10,width:28,height:28,fontSize:14}}>🔒</div>}
+          <div className={`hero-lock-btn ${isHeroLocked ? 'locked' : ''}`}
+               onClick={(e) => { e.stopPropagation(); onLockToggle(currentHero); }}
+               title={isHeroLocked ? 'Déverrouiller' : 'Garder cette pièce'}>
+            <span>{isHeroLocked ? '🔒' : '🔓'}</span>
+          </div>
         </div>
       </div>
 
@@ -1376,7 +1402,7 @@ function HeroBundle({ bundle, activeSlot, lockedSlots, heroSlot, onHeroChange, o
           return (
             <div key={slot}
                  className={`thumb-item ${isSelected ? 'selected' : ''} ${isLocked ? 'locked' : ''} ${dimmed ? 'unlocked-hint' : ''}`}
-                 onClick={(e) => { e.stopPropagation(); onLockToggle(slot); onHeroChange(slot); }}>
+                 onClick={(e) => { e.stopPropagation(); onHeroChange(slot); }}>
               <div className="thumb-img">
                 {getImage(p) && <img src={getImage(p)} alt={p.title} loading="lazy" draggable="false" />}
               </div>
@@ -1392,25 +1418,6 @@ function HeroBundle({ bundle, activeSlot, lockedSlots, heroSlot, onHeroChange, o
   );
 }
 
-function AlternativesPanel({ slot, alternatives, onSelect, onClose }) {
-  return (
-    <div className="alternatives-panel">
-      <div className="alternatives-title">Alternatives pour ce slot</div>
-      <div className="alternatives-row">
-        {alternatives.map((p, i) => (
-          <div key={i} className="alt-item" onClick={() => onSelect(slot, p)}>
-            <div className="product-img-wrap">
-              {getImage(p) && <img src={getImage(p)} alt={p.title} loading="lazy" />}
-            </div>
-            <div className="alt-item-name">{p.vendor}</div>
-            <div className="alt-item-price">{Math.round(getPrice(p))}€</div>
-          </div>
-        ))}
-      </div>
-      <div className="alt-close" onClick={onClose}>Fermer</div>
-    </div>
-  );
-}
 
 function DetailOverlay({ bundle, onClose }) {
   const items = bundle.items;
@@ -1477,7 +1484,7 @@ async function fetchProductDetail(handle) {
   return { description: '', images: [] };
 }
 
-function ProductDetailCard({ product, slotKey, onSwap }) {
+function ProductDetailCard({ product, slotKey }) {
   if (!product) return null;
   const [detail, setDetail] = useState(null);
   const [activeImg, setActiveImg] = useState(0);
@@ -1525,9 +1532,6 @@ function ProductDetailCard({ product, slotKey, onSwap }) {
           {sizes.map((s, i) => <div key={i} className="detail-card-size">{s}</div>)}
         </div>
       )}
-      <div className="detail-card-swap" onClick={() => onSwap(slotKey)}>
-        ↻ Changer ce produit
-      </div>
     </div>
   );
 }
@@ -1547,8 +1551,6 @@ function App() {
   const [catalog, setCatalog] = useState(null);
   const [weather, setWeather] = useState(null);
   const [currentBundle, setCurrentBundle] = useState(null);
-  const [activeSlot, setActiveSlot] = useState(null);
-  const [alternatives, setAlternatives] = useState(null);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
   const [entering, setEntering] = useState(false);
@@ -1626,8 +1628,7 @@ function App() {
   const handleNewBundle = useCallback((direction) => {
     if (isAnimating || !catalog || !weather) return;
     setIsAnimating(true);
-    setActiveSlot(null);
-    setAlternatives(null);
+
 
     // Capture locked items before state changes
     const currentLocked = new Set(lockedSlots);
@@ -1681,11 +1682,17 @@ function App() {
       setUserSignals(currentSignals => {
         let newBundle = null;
 
-        // Try RAG bundle selection first
+        // Build locked product handles for RAG filtering
+        const lockedHandlesList = Object.entries(lockedItems)
+          .map(([slot, product]) => product?.handle)
+          .filter(Boolean);
+
+        // Try RAG bundle selection first (filtered by locked products)
         if (ragDataRef.current && productMapRef.current) {
           const selected = selectRAGBundle(
             ragDataRef.current, productMapRef.current, weather,
-            currentSignals.preferences, seenBundlesRef.current, direction
+            currentSignals.preferences, seenBundlesRef.current, direction,
+            null, lockedHandlesList
           );
           if (selected) {
             const resolvedItems = resolveRAGItems(selected.bundle.items, productMapRef.current);
@@ -1705,12 +1712,8 @@ function App() {
           newBundle = composeBundle(catalog, weather, currentSignals, previousBundleRef.current, direction);
         }
 
-        // Lock & Reroll: overlay locked items onto new bundle (only on left swipe)
-        if (Object.keys(lockedItems).length > 0 && newBundle && direction === 'left') {
-          newBundle = { ...newBundle, items: { ...newBundle.items, ...lockedItems } };
-        }
-        // Clear locks on right swipe (full accept) or if no locks remain relevant
-        if (direction === 'right' || Object.keys(lockedItems).length === 0) {
+        // Clear locks on right swipe (full accept)
+        if (direction === 'right') {
           setLockedSlots(new Set());
         }
 
@@ -1832,53 +1835,6 @@ function App() {
     });
   }, [currentBundle]);
 
-  // Tap on product → show alternatives to swap (RAG alternatives first, then random)
-  const handleSlotSwap = useCallback((slot) => {
-    if (isAnimating) return;
-    if (activeSlot === slot) {
-      setActiveSlot(null);
-      setAlternatives(null);
-      return;
-    }
-    setActiveSlot(slot);
-    setUserSignals(prev => ({
-      ...prev,
-      tappedSlots: [...prev.tappedSlots, slot]
-    }));
-
-    // Try RAG alternatives first (pre-curated, style-coherent)
-    const ragAlts = ragAlternativesRef.current[slot];
-    if (ragAlts && ragAlts.length > 0) {
-      const current = currentBundle.items[slot.toLowerCase()];
-      const filtered = ragAlts.filter(p => !current || p.handle !== current.handle).slice(0, 3);
-      if (filtered.length > 0) {
-        setAlternatives(filtered);
-        return;
-      }
-    }
-
-    // Fallback: random from catalog
-    const pool = catalog[slot] || [];
-    const current = currentBundle.items[slot.toLowerCase()];
-    const alts = pool.filter(p => !current || p.handle !== current.handle)
-      .sort(() => Math.random() - 0.5).slice(0, 3);
-    setAlternatives(alts);
-  }, [activeSlot, catalog, currentBundle, isAnimating]);
-
-  // Alternative selection
-  const handleAltSelect = useCallback((slot, product) => {
-    setCurrentBundle(prev => {
-      const newItems = { ...prev.items, [slot.toLowerCase()]: product };
-      return { ...prev, items: newItems };
-    });
-    setActiveSlot(null);
-    setAlternatives(null);
-    setUserSignals(prev => ({
-      ...prev,
-      preferredBrands: { ...prev.preferredBrands, [product.vendor]: (prev.preferredBrands[product.vendor] || 0) + 1 },
-      preferredTypes: { ...prev.preferredTypes, [product.productType]: (prev.preferredTypes[product.productType] || 0) + 1 }
-    }));
-  }, []);
 
   // CTA → create Shopify cart and redirect to checkout
   const handleCTA = useCallback(async () => {
@@ -1996,9 +1952,9 @@ function App() {
           <div className="bundle-card-inner">
             <div className="editorial-note">"{editorial}"</div>
 
-            <HeroBundle bundle={currentBundle} activeSlot={activeSlot}
+            <HeroBundle bundle={currentBundle}
               lockedSlots={lockedSlots} heroSlot={heroSlot}
-              onHeroChange={handleHeroChange} onSlotTap={handleSlotSwap}
+              onHeroChange={handleHeroChange}
               onLockToggle={handleLockToggle} />
 
             <div className="bundle-divider"></div>
@@ -2017,17 +1973,12 @@ function App() {
             </div>
           </div>
 
-          {activeSlot && alternatives && alternatives.length > 0 && (
-            <AlternativesPanel slot={activeSlot} alternatives={alternatives}
-              onSelect={handleAltSelect} onClose={() => { setActiveSlot(null); setAlternatives(null); }} />
-          )}
-
           <div className="bundle-details">
             {['veste','haut','bas','chaussures','accessoire']
               .filter(slot => currentBundle.items[slot])
               .map(slot => (
                 <ProductDetailCard key={slot} product={currentBundle.items[slot]}
-                  slotKey={slot.toUpperCase()} onSwap={handleSlotSwap} />
+                  slotKey={slot.toUpperCase()} />
               ))
             }
           </div>

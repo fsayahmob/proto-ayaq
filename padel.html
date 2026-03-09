@@ -403,7 +403,7 @@ function App(){
   const[chatInput,setChatInput]=useState("");
   const[chatMsgs,setChatMsgs]=useState([]);
   const[chatLoading,setChatLoading]=useState(false);
-  const WORKER_URL=window.__PADEL_WORKER_URL||"";
+  const WORKER_URL=window.__PADEL_WORKER_URL||"/api/gemini";
   const[gen,setGen]=useState(null);
   const[level,setLevel]=useState(null);
   const[style,setStyle]=useState(null);
@@ -445,31 +445,33 @@ function App(){
   const reset=()=>{setPh("hero");setGen(null);setLevel(null);setStyle(null);setPosition(null);setFreq(null);setInjury(null);setRes(null);setExC(null);setSA(null);setNdg(null);setNs({});setBudgetMax(400);window.scrollTo(0,0);};
 
   /* ═══ GEMINI TEXT MODE ═══ */
+  const heuristicFallback=(userMsg)=>{
+    const msg=userMsg.toLowerCase();
+    const profile={level:"intermediaire",style:"polyvalent",position:"les-deux",freq:"regulier",injury:"aucune",summary:""};
+    if(msg.match(/débute|commence|nouveau|premier/)) profile.level="debutant";
+    else if(msg.match(/compét|tournoi|classé|expert/)) profile.level="expert";
+    else if(msg.match(/avanc|3.ans|4.ans|5.ans/)) profile.level="avance";
+    if(msg.match(/smash|attaqu|puissan|offensi/)) profile.style="puissance";
+    else if(msg.match(/contrôle|control|défens|patient|placement/)) profile.style="controle";
+    if(msg.match(/droit/)) profile.position="droite";
+    else if(msg.match(/gauch/)) profile.position="gauche";
+    if(msg.match(/occasion|1.fois|rarement/)) profile.freq="occasionnel";
+    else if(msg.match(/intensi|tous.les.jours|3.fois|4.fois/)) profile.freq="intensif";
+    if(msg.match(/coude|tennis.elbow|avant.bras/)) profile.injury="coude";
+    else if(msg.match(/épaule|poignet/)) profile.injury="epaule";
+    else if(msg.match(/genou|chevill/)) profile.injury="genoux";
+    profile.summary="Profil détecté : "+LEVELS.find(l=>l.id===profile.level)?.label+" · "+STYLES.find(s=>s.id===profile.style)?.label;
+    return profile;
+  };
+
   const sendToGemini=async(userMsg)=>{
-    if(!WORKER_URL){
-      /* Fallback sans API : extraction heuristique basique */
-      const msg=userMsg.toLowerCase();
-      const profile={genre:gen||"h",level:"intermediaire",style:"polyvalent",position:"les-deux",freq:"regulier",injury:"aucune",summary:""};
-      if(msg.match(/débute|commence|nouveau|premier/)) profile.level="debutant";
-      else if(msg.match(/compét|tournoi|classé|expert/)) profile.level="expert";
-      else if(msg.match(/avanc|3.ans|4.ans|5.ans/)) profile.level="avance";
-      if(msg.match(/smash|attaqu|puissan|offensi/)) profile.style="puissance";
-      else if(msg.match(/contrôle|control|défens|patient|placement/)) profile.style="controle";
-      if(msg.match(/droit/)) profile.position="droite";
-      else if(msg.match(/gauch/)) profile.position="gauche";
-      if(msg.match(/occasion|1.fois|rarement/)) profile.freq="occasionnel";
-      else if(msg.match(/intensi|tous.les.jours|3.fois|4.fois/)) profile.freq="intensif";
-      if(msg.match(/coude|tennis.elbow|avant.bras/)) profile.injury="coude";
-      else if(msg.match(/épaule|poignet/)) profile.injury="epaule";
-      else if(msg.match(/genou|chevill/)) profile.injury="genoux";
-      profile.summary="Profil détecté : "+LEVELS.find(l=>l.id===profile.level)?.label+" · "+STYLES.find(s=>s.id===profile.style)?.label;
-      return profile;
-    }
+    /* Try API first, fallback to heuristic */
     try{
-      const resp=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:userMsg,context:{genre:gen,currentStep:ph}})});
-      const data=await resp.json();
-      return data;
-    }catch(e){return null;}
+      const resp=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:userMsg})});
+      if(resp.ok){const data=await resp.json();if(data.level) return data;}
+    }catch(e){}
+    /* Fallback heuristique si API indisponible */
+    return heuristicFallback(userMsg);
   };
 
   const handleTextSubmit=async()=>{

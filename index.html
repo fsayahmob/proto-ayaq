@@ -15,6 +15,10 @@ body{background:#0a0a0a;overflow-x:hidden;-webkit-font-smoothing:antialiased}
 @keyframes pulse{0%,100%{opacity:0.2}50%{opacity:1}}
 @keyframes nudgeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
 @keyframes slideDown{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes feedReveal{from{opacity:0;max-height:0;transform:translateY(8px)}to{opacity:1;max-height:200px;transform:translateY(0)}}
+.feed-overlay{position:absolute;inset:0;opacity:0;pointer-events:none;transition:opacity 0.35s ease}
+.feed-overlay.active{opacity:1;pointer-events:auto}
+@keyframes dwellGlow{0%{box-shadow:inset 0 0 0 0 rgba(122,170,148,0)}100%{box-shadow:inset 0 0 0 1px rgba(122,170,148,0.3)}}
 ::-webkit-scrollbar{width:4px}
 ::-webkit-scrollbar-track{background:#0a0a0a}
 ::-webkit-scrollbar-thumb{background:#333}
@@ -28,7 +32,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const {useState,useEffect,useRef}=React;
+const {useState,useEffect,useRef,useMemo}=React;
 const T={black:"#0a0a0a",ch:"#161616",grey:"#8a8a8a",light:"#c8c8c8",white:"#fafaf8",acc:"#b8d4c8",acc2:"#7aaa94",df:"'Cormorant Garamond',Georgia,serif",bf:"'Outfit',system-ui,sans-serif"};
 
 /* ═══ AUTO-DETECT SEASON from date ═══ */
@@ -101,21 +105,21 @@ const GENS=[
 const P={
   base:[
     {id:"biafo",name:"BIAFO",type:"Base Layer Mérinos 150g/m²",price:89,
-      sc:[3,9,2,1,10,9],
+      sc:[3,9,2,1,10,9],tags:["debutant","leger","regulateur","ete","polyvalent","merinos","base"],
       img:"https://ayaq.com/cdn/shop/files/Ayaq_man-merino-tshirt-grey-volcano-biafo-ps1_2.jpg?v=1749223218&width=533",
       imgF:"https://ayaq.com/cdn/shop/files/Ayaq_woman-merino-tshirt-powder-pink-biafo-ps1.jpg?v=1749800970&width=533",
       specs:{Fibre:"100% Mérinos RWS 17.5µ",Grammage:"150 g/m²",Régulation:"Anti-odeur multi-jours",Certif:"OEKO-TEX®"},
       why:"Le grammage 150g/m² est le sweet spot thermorégulation : évacuation vapeur rapide en effort, isolation légère au repos. Fibre 17.5 microns — zéro irritation.",
       eco:"Mérinos RWS issu de fermes plein air certifiées. Filage italien.",url:"/en/products/biafo-merino-short-sleeve-h"},
     {id:"mefonna",name:"MEFONNA",type:"Base Layer LS Mérinos",price:99,
-      sc:[5,8,3,1,9,10],
+      sc:[5,8,3,1,9,10],tags:["polyvalent","4-saisons","merinos","base","regulier"],
       img:"https://ayaq.com/cdn/shop/files/Ayaq_man-merino-tshirt-blue-slate-mefonna-ps1.jpg?v=1765791902&width=533",
       imgF:"https://ayaq.com/cdn/shop/files/Ayaq_woman-merino-tshirt-deep-green-mefonna-ps1.jpg?v=1749131036&width=533",
       specs:{Fibre:"100% Mérinos RWS 17.5µ",Coupe:"Manches longues raglan",Séchage:"Rapide",Certif:"OEKO-TEX®"},
       why:"La base layer la plus polyvalente. Raglan pour liberté totale. Régule de -10°C à +20°C — un vêtement, 4 saisons.",
       eco:"Chaîne alpine intégrale : filage Italie, tricotage Europe, assemblage Portugal.",url:"/en/products/mefonna-merino-longsleeve-h"},
     {id:"shirwali",name:"SHIRWALI",type:"Base Layer Mérinos-Tencel 240g/m²",price:129,
-      sc:[9,6,4,2,7,5],
+      sc:[9,6,4,2,7,5],tags:["froid","extreme","altitude","hivernal","merinos","base","expert"],
       img:"https://ayaq.com/cdn/shop/files/Ayaq_man-merino-tshirt-black-storm-shirwali-ps1.jpg?v=1749802410&width=533",
       imgF:"https://ayaq.com/cdn/shop/files/Ayaq_woman-merino-tshirt-black-storm-shirwali-ps1.jpg?v=1749801549&width=533",
       specs:{Fibre:"Mérinos RWS + Tencel™",Grammage:"240 g/m²",Chaleur:"Maximale",Certif:"OEKO-TEX®"},
@@ -124,28 +128,28 @@ const P={
   ],
   mid:[
     {id:"kokanee",name:"KOKANEE",type:"Polaire Active Waffle",price:149,
-      sc:[4,10,3,1,8,8],
+      sc:[4,10,3,1,8,8],tags:["actif","respirant","polaire","mid","regulier","effort"],
       img:"https://ayaq.com/cdn/shop/files/Ayaq_man-fleece-jacket-black-storm-kokanee-ps1.jpg?v=1749802720&width=533",
       imgF:"https://ayaq.com/cdn/shop/files/Ayaq_woman-fleece-jacket-black-storm-kokanee-ps1.jpg?v=1749132134&width=533",
       specs:{Tissu:"Waffle recyclé brossé",Évacuation:"Capture & disperse vapeur",Mobilité:"Épaules libres",Assemblage:"Portugal"},
       why:"Polaire active. Waffle brossé = dispersion humidité avant condensation. Effort continu, séchage ultra-rapide.",
       eco:"Tissus recyclés tissés en Italie, France et Allemagne. Assemblage Portugal.",url:"/en/products/kokanee-fleece-h"},
     {id:"arolla",name:"AROLLA",type:"Polaire Confort 380g/m²",price:159,
-      sc:[8,6,5,2,5,7],
+      sc:[8,6,5,2,5,7],tags:["chaleur","confort","polaire","mid","froid","hivernal"],
       img:"https://ayaq.com/cdn/shop/files/Ayaq_man-fleece-jacket-sand-beige-arolla-ps1.jpg?v=1749153574&width=533",
       imgF:"https://ayaq.com/cdn/shop/files/Ayaq_woman-fleece-jacket-black-storm-arolla-ps1.jpg?v=1749131503&width=533",
       specs:{Grammage:"380 g/m²",Doublure:"Polaire intégrée",Poids:"525g",Certif:"OEKO-TEX®"},
       why:"Chaleur « cocon ». 380g/m² + doublure polaire = ratio chaleur/poids imbattable. Pensée pour le layering.",
       eco:"Polyester recyclé certifié OEKO-TEX®. Tissu France, assemblage Portugal.",url:"/en/products/arolla-comfort-fleece-h"},
     {id:"forno",name:"FORNO",type:"Gilet Isolant Magnétique",price:359,
-      sc:[9,5,8,3,7,6],
+      sc:[9,5,8,3,7,6],tags:["innovant","magnetique","gilet","mid","technique","expert"],
       img:"https://ayaq.com/cdn/shop/files/Ayaq_man-insulated-jacket-black-storm-forno-ps1.jpg?v=1749801993&width=533",
       imgF:"https://ayaq.com/cdn/shop/files/Ayaq_woman-insulated-jacket-blue-slate-forno-ps1.jpg?v=1749803452&width=533",
       specs:{Innovation:"MAGNET CLAP SYSTEM™",Isolation:"THERMORE® recyclé",Poids:"380g",Certif:"OEKO-TEX®"},
       why:"Brevet AYAQ : fermeture magnétique latérale. Retrait 2 sec sous hardshell. Pas de pont froid zip.",
       eco:"100% NEWLIFE® recyclé depuis bouteilles des Alpes du Sud. Garantie 3 ans.",url:"/en/products/forno-innovative-vest-h"},
     {id:"ultar",name:"ULTAR",type:"Doudoune Technique PRIMALOFT®",price:339,
-      sc:[10,4,7,4,4,6],
+      sc:[10,4,7,4,4,6],tags:["froid","extreme","doudoune","mid","hivernal","primaloft","expert"],
       img:"https://ayaq.com/cdn/shop/files/Ayaq_man-insulated-jacket-deep-blue-ultar-ps1.jpg?v=1749129584&width=533",
       imgF:"https://ayaq.com/cdn/shop/files/Ayaq_woman-insulated-jacket-orange-salmon-ultar-ps1.jpg?v=1749803255&width=533",
       specs:{Isolation:"PRIMALOFT® 100% recyclé",Tissu:"NEWLIFE® recyclé",Poids:"633g",Certif:"OEKO-TEX®"},
@@ -154,28 +158,28 @@ const P={
   ],
   outer:[
     {id:"shandar",name:"SHANDAR",type:"Coupe-vent Technique",price:190,
-      sc:[3,10,10,4,7,9],
+      sc:[3,10,10,4,7,9],tags:["vent","leger","coupe-vent","outer","respirant","actif","polyvalent"],
       img:"https://ayaq.com/cdn/shop/files/Ayaq_man-windbreaker-jacket-black-storm-shandar-ps1.jpg?v=1760537690&width=533",
       imgF:"https://ayaq.com/cdn/shop/files/Ayaq_woman-windbreaker-jacket-black-storm-shandar-ps1.jpg?v=1749804145&width=533",
       specs:{Protection:"Wind 10/10 · Breathe 10/10",Poids:"454g",DWR:"PFC-Free",Poche:"Clean Mountain™"},
       wt:"DWR PFC-Free",why:"Architecture zonée : coupe-vent devant, stretch respirant dos. Clean Mountain Pocket™.",
       eco:"Polyester 100% recyclé (Italie). 80% moins d'adhésif qu'un 2-couches standard.",url:"/en/products/shandar-windproof-jacket-h"},
     {id:"skora",name:"SKORA",type:"Hardshell 3L Sympatex®",price:489,
-      sc:[5,8,9,10,6,7],
+      sc:[5,8,9,10,6,7],tags:["pluie","imperméable","hardshell","outer","sympatex","technique"],
       img:"https://ayaq.com/cdn/shop/files/Ayaq_man-waterproof-jacket-grey-mist-skora-ps1.jpg?v=1749128580&width=533",
       imgF:"https://ayaq.com/cdn/shop/files/Ayaq_woman-waterproof-jacket-grey-mist-skora-vp2.jpg?v=1749129823&width=533",
       specs:{Membrane:"Sympatex® non-microporeuse",Schmerber:"≥ 45 000",RET:"< 12 m²Pa/W",Tissu:"170 g/m² 3L"},
       wt:"≥ 45 000 Schmerber",why:"Sympatex® hydrophile non-microporeuse : respirabilité stable sans colmatage. ×25 la pression de la pluie. 0% PTFE.",
       eco:"Laminé 3 couches 100% recyclé et recyclable. Membrane climat-neutre. OEKO-TEX® + bluesign®.",url:"/en/products/skora-hardshell-jacket-h"},
     {id:"lonak",name:"LONAK",type:"Hardshell Exploration 3L",price:649,
-      sc:[6,7,10,10,5,5],
+      sc:[6,7,10,10,5,5],tags:["extreme","alpinisme","hardshell","outer","record","expedition","expert"],
       img:"https://ayaq.com/cdn/shop/files/Ayaq_man-waterproof-jacket-black-storm-lonak-ps1.jpg?v=1758180152&width=533",
       imgF:"https://ayaq.com/cdn/shop/files/Ayaq_woman-waterproof-jacket-orange-sunrise-lonak-ps1.jpg?v=1767701777&width=533",
       specs:{Schmerber:"≥ 51 000 (record labo)",Poids:"487g",RECCO:"Intégré",Capuche:"Compatible casque 2D"},
       wt:"≥ 51 000 Schmerber",why:"L'iconique AYAQ. Record mondial 51K Schmerber. Coupe Inuit. RECCO® secours avalanche intégré.",
       eco:"100% polyester recyclé. Membrane recyclable. OEKO-TEX® + bluesign®.",url:"/en/products/lonak-hardshell-jacket-h"},
     {id:"baltoro",name:"BALTORO",type:"Doudoune Isolée Active",price:459,
-      sc:[9,5,8,6,4,4],
+      sc:[9,5,8,6,4,4],tags:["froid","isolation","doudoune","outer","primaloft","actif"],
       img:"https://ayaq.com/cdn/shop/files/Ayaq_man-waterproof-jacket-blue-shades-baltoro-ps1.jpg?v=1749802980&width=533",
       imgF:"https://ayaq.com/cdn/shop/files/Ayaq_woman-waterproof-jacket-blue-ice-baltoro-ps1.jpg?v=1749130450&width=533",
       specs:{Isolation:"PRIMALOFT® Active",Coupe:"Slim fit technique",Liberté:"Mouvement total",Garantie:"3 ans + réparation"},
@@ -184,14 +188,14 @@ const P={
   ],
   pants:[
     {id:"rimo",name:"RIMO",type:"Softshell Zonée Coupe-vent",price:259,
-      sc:[4,8,10,3,8,9],
+      sc:[4,8,10,3,8,9],tags:["vent","softshell","pants","technique","respirant","polyvalent"],
       img:"https://ayaq.com/cdn/shop/files/Ayaq_man-windproof-pants-pine-green-rimo-ps1.jpg?v=1749132688&width=533",
       imgF:"https://ayaq.com/cdn/shop/files/Ayaq_woman-windproof-pants-black-storm-rimo-ps1.jpg?v=1749136020&width=533",
       specs:{Devant:"Membrane 100% wind PFC-Free",Dos:"90% recyclé stretch Italie",Poids:"348g",ECONYL:"Nylon régénéré"},
       wt:"Wind 10/10 · Breathe 8/10",why:"Zonée : membrane coupe-vent PFC-Free devant, stretch respirant derrière. ECONYL® régénéré.",
       eco:"Membrane française PFC-Free. Tissu italien 90% recyclé. ECONYL® régénéré.",url:"/en/products/rimo-pants-h"},
     {id:"nunatak",name:"NUNATAK",type:"Hardshell 3L Intégral",price:499,
-      sc:[7,5,9,10,4,4],
+      sc:[7,5,9,10,4,4],tags:["pluie","hardshell","pants","neige","imperméable","extreme"],
       img:"https://ayaq.com/cdn/shop/files/Ayaq_man-waterproof-pants-black-storm-nunatak-vp1.jpg?v=1749135068&width=533",
       imgF:"https://ayaq.com/cdn/shop/files/Ayaq_woman-waterproof-pants-black-storm-nunatak-ps1.jpg?v=1749136176&width=533",
       specs:{Membrane:"Sympatex® ≥ 20 000",Guêtres:"Intégrées pare-neige",Protection:"Intégrale 3L",Certif:"OEKO-TEX® + bluesign®"},
@@ -418,7 +422,252 @@ function App(){
   const sN=k=>{const arr=ND[k];setNdg(arr[Math.floor(Math.random()*arr.length)]);setTimeout(()=>setNdg(null),6000);};
   const doLvl=l=>{setLvl(l);setPh("an");setTimeout(()=>{setRes(getRecs(act,sea,cond||"mixed",l,gen,budgetMax,warmBreath));setPh("res");},2200);};
   const swap=(li2,np)=>{tch();setRes(r=>r.map((x,i)=>i===li2?{...np,layerLabel:x.layerLabel,layerName:x.layerName,cat:x.cat,dImg:gen==="f"&&np.imgF?np.imgF:np.img}:x));setSA(null);if(np.price>400&&!ns.p)setTimeout(()=>{sN("p");setNs(q=>({...q,p:1}));},1500);};
-  const reset=()=>{setPh("hero");setAct(null);setSea(autoDetectSeason());setCond(null);setLvl(null);setGen(null);setDest(null);setRes(null);setExC(null);setSA(null);setNdg(null);setNs({});setShowOverride(false);setActiveLayer(null);setManualCond(false);setWCity(null);setWTemp(null);window.scrollTo(0,0);};
+  const reset=()=>{setPh("hero");setAct(null);setSea(autoDetectSeason());setCond(null);setLvl(null);setGen(null);setDest(null);setRes(null);setExC(null);setSA(null);setNdg(null);setNs({});setShowOverride(false);setActiveLayer(null);setManualCond(false);setWCity(null);setWTemp(null);setFeedInterests([]);setFeedChatInput("");setFeedChatMsgs([]);setFeedProfile(null);setFeedChatLoading(false);setFeedExpanded(null);setFeedCatBoost(null);setLockedFeedOrder(null);setChatInput("");setChatMsgs([]);window.scrollTo(0,0);};
+
+  /* ═══ GEMINI / HEURISTIC ═══ */
+  const WORKER_URL=window.__AYAQ_WORKER_URL||"/api/gemini";
+  const[chatInput,setChatInput]=useState("");
+  const[chatMsgs,setChatMsgs]=useState([]);
+  const[chatLoading,setChatLoading]=useState(false);
+
+  const heuristicFallback=(userMsg)=>{
+    const msg=userMsg.toLowerCase();
+    const profile={activity:"hiking",season:"winter",condition:"mixed",level:"regular",tags:[],summary:""};
+    const details=[];
+    if(msg.match(/rando|marche|trek/)){profile.activity="hiking";profile.tags.push("hiking","polyvalent");details.push("randonnée");}
+    else if(msg.match(/ski.de.rand|ski.rando|skimo/)){profile.activity="ski-touring";profile.tags.push("ski-touring","technique","respirant");details.push("ski de rando");}
+    else if(msg.match(/alpini|sommet|glacier|haute.montagne/)){profile.activity="alpine";profile.tags.push("alpinisme","extreme","expert","expedition");details.push("alpinisme");}
+    else if(msg.match(/trail|course|running/)){profile.activity="trail";profile.tags.push("trail","leger","respirant","actif");details.push("trail");}
+    else if(msg.match(/ski.alpin|piste|station/)){profile.activity="ski";profile.tags.push("ski","froid","hivernal");details.push("ski alpin");}
+    if(msg.match(/hiver|neige|froid|déc|jan|fév/)){profile.season="winter";profile.tags.push("hivernal","froid");details.push("conditions hivernales");}
+    else if(msg.match(/été|chaud|canicule|juil|août/)){profile.season="summer";profile.tags.push("ete","leger","respirant");details.push("conditions estivales");}
+    else if(msg.match(/printemps|mars|avril|mai/)){profile.season="spring";profile.tags.push("polyvalent");details.push("printemps");}
+    else if(msg.match(/automne|sept|oct|nov/)){profile.season="autumn";profile.tags.push("polyvalent");details.push("automne");}
+    if(msg.match(/pluie|mouill|imperméable|étanche/)){profile.condition="rain";profile.tags.push("pluie","imperméable","hardshell");details.push("protection pluie");}
+    else if(msg.match(/vent|tempête|rafale/)){profile.condition="wind";profile.tags.push("vent","coupe-vent");details.push("protection vent");}
+    else if(msg.match(/intense|effort|transpi|respirab/)){profile.condition="intense";profile.tags.push("respirant","actif","effort");details.push("effort intense");}
+    if(msg.match(/débute|commence|premier|novice/)){profile.level="beginner";profile.tags.push("debutant","polyvalent");details.push("débutant");}
+    else if(msg.match(/expert|extrême|expéd|pro|compét/)){profile.level="expert";profile.tags.push("expert","technique","extreme");details.push("expert");}
+    if(msg.match(/base.layer|sous.vêtement|mérinos|première.couche/)){profile.tags.push("base","merinos");details.push("base layer");}
+    if(msg.match(/polaire|mid|isol|doudoune|deuxième.couche/)){profile.tags.push("mid","polaire","chaleur");details.push("isolation");}
+    if(msg.match(/hardshell|imperméable|veste|troisième.couche|gore|sympatex/)){profile.tags.push("outer","hardshell","imperméable");details.push("couche externe");}
+    if(msg.match(/pantalon|bas|jambe/)){profile.tags.push("pants");details.push("pantalon");}
+    if(msg.match(/léger|light|ultraléger/)){profile.tags.push("leger");details.push("recherche légèreté");}
+    if(msg.match(/chaud|chaleur|isolation/)){profile.tags.push("froid","chaleur");details.push("priorité chaleur");}
+    profile.tags=[...new Set(profile.tags)];
+    const actLabel={hiking:"Randonnée","ski-touring":"Ski de rando",alpine:"Alpinisme",trail:"Trail",ski:"Ski alpin"}[profile.activity]||"Outdoor";
+    const detailStr=details.join(", ");
+    profile.summary=details.length>0
+      ?`Compris : ${detailStr}. Je réorganise le catalogue AYAQ pour votre profil ${actLabel}.`
+      :`Dites-moi votre activité, la saison, les conditions... Plus vous décrivez, plus le catalogue s'adapte.`;
+    return profile;
+  };
+
+  const sendToGemini=async(userMsg,currentProfile)=>{
+    try{
+      const body={message:userMsg};
+      if(currentProfile) body.currentProfile=currentProfile;
+      const resp=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      if(resp.ok){
+        const data=await resp.json();
+        if(data.activity||data.level||data.tags){
+          console.log("[Gemini] API response:",data);
+          return data;
+        }
+      }
+    }catch(e){
+      console.warn("[Gemini] Fetch failed:",e.message);
+    }
+    console.log("[Gemini] Using heuristic fallback");
+    return heuristicFallback(userMsg);
+  };
+
+  const handleTextSubmit=async()=>{
+    if(!chatInput.trim())return;
+    const userMsg=chatInput.trim();
+    setChatInput("");
+    setChatMsgs(prev=>[...prev,{role:"user",text:userMsg}]);
+    setChatLoading(true);
+    const profile=await sendToGemini(userMsg);
+    setChatLoading(false);
+    if(profile){
+      setChatMsgs(prev=>[...prev,{role:"ai",text:profile.summary||"Profil analysé. Voici votre système."}]);
+      if(profile.activity) setAct(profile.activity);
+      if(profile.season) setSea(profile.season);
+      if(profile.condition) setCond(profile.condition);
+      if(profile.level) setLvl(profile.level);
+      setTimeout(()=>{
+        const a=profile.activity||act||"hiking";
+        const s=profile.season||sea||"winter";
+        const c=profile.condition||cond||"mixed";
+        const l=profile.level||lvl||"regular";
+        setPh("an");
+        setTimeout(()=>{
+          setRes(getRecs(a,s,c,l,gen,budgetMax,warmBreath));setPh("res");
+        },2200);
+      },1500);
+    }
+  };
+
+  const handleRefine=async()=>{
+    if(!chatInput.trim())return;
+    const userMsg=chatInput.trim();
+    setChatInput("");
+    setChatMsgs(prev=>[...prev,{role:"user",text:userMsg}]);
+    setChatLoading(true);
+    const currentProfile={activity:act,season:sea,condition:cond,level:lvl};
+    const profile=await sendToGemini(userMsg,currentProfile);
+    setChatLoading(false);
+    if(profile){
+      setChatMsgs(prev=>[...prev,{role:"ai",text:profile.summary||"Système mis à jour."}]);
+      const a=profile.activity||act;
+      const s=profile.season||sea;
+      const c=profile.condition||cond;
+      const l=profile.level||lvl;
+      setAct(a);setSea(s);setCond(c);setLvl(l);
+      setRes(getRecs(a,s,c,l,gen,budgetMax,warmBreath));
+    }
+  };
+
+  /* ═══ ATTENTIONAL FEED — Catalogue intelligent ═══ */
+  const [feedInterests,setFeedInterests]=useState([]);
+  const [feedNudgeMap,setFeedNudgeMap]=useState({});
+  const [feedChatInput,setFeedChatInput]=useState("");
+  const [feedChatMsgs,setFeedChatMsgs]=useState([]);
+  const [feedProfile,setFeedProfile]=useState(null);
+  const [feedChatLoading,setFeedChatLoading]=useState(false);
+  const [feedExpanded,setFeedExpanded]=useState(null);
+  const [feedCatBoost,setFeedCatBoost]=useState(null);
+  const [lockedFeedOrder,setLockedFeedOrder]=useState(null);
+
+  const allProducts=useMemo(()=>[
+    ...P.base.map(p=>({...p,cat:"base",catLabel:"BASE LAYER"})),
+    ...P.mid.map(p=>({...p,cat:"mid",catLabel:"MID LAYER"})),
+    ...P.outer.map(p=>({...p,cat:"outer",catLabel:"OUTER"})),
+    ...P.pants.map(p=>({...p,cat:"pants",catLabel:"PANTALON"})),
+  ],[]);
+
+  const defaultFeedOrder=useMemo(()=>{
+    const bycat={};
+    allProducts.forEach(p=>{(bycat[p.cat]=bycat[p.cat]||[]).push(p);});
+    const cats=Object.keys(bycat);
+    const result=[];
+    const maxLen=Math.max(...cats.map(c=>bycat[c].length));
+    for(let i=0;i<maxLen;i++) cats.forEach(c=>{if(bycat[c][i]) result.push(bycat[c][i]);});
+    return result;
+  },[allProducts]);
+
+  const scoreAllProducts=(products,interests,profile,catBoost)=>{
+    return products.map(p=>{
+      let aff=0;
+      if(catBoost&&p.cat===catBoost) aff+=100;
+      else if(catBoost&&p.cat!==catBoost) aff-=50;
+      interests.forEach(int=>{
+        if(int.cat===p.cat) aff+=2;
+        if(Math.abs(int.price-p.price)<80) aff+=1;
+        if(p.sc&&int.sc) aff+=p.sc.reduce((s,v,i)=>s+v*(int.sc[i]||0),0)/60;
+      });
+      if(!catBoost&&profile){
+        const actP=profile.activity||"hiking";
+        const seaP=profile.season||"winter";
+        const cndP=profile.condition||"mixed";
+        const lvlP=profile.level||"regular";
+        try{
+          const prof=buildProfile(actP,seaP,cndP,50);
+          aff+=scoreProduct(p,prof,lvlP)*2;
+        }catch(e){}
+      }
+      if(profile&&profile.tags&&p.tags){
+        const matches=profile.tags.filter(t=>p.tags.includes(t)).length;
+        aff+=matches*5;
+      }
+      return{...p,_affinity:aff};
+    });
+  };
+
+  const getFeedOrder=()=>lockedFeedOrder||defaultFeedOrder;
+
+  const generateFeedNudge=(product,interests)=>{
+    if(interests.length===0) return null;
+    const last=interests[interests.length-1];
+    if(last.id===product.id) return null;
+    if(last.cat===product.cat&&Math.abs(last.price-product.price)<80) return `Même gamme que le ${last.name} — ${product.price<last.price?"plus accessible":"plus technique"}.`;
+    if(product.sc&&last.sc){
+      const dot=product.sc.reduce((s,v,i)=>s+v*(last.sc[i]||0),0);
+      if(dot>250) return `Profil technique similaire au ${last.name}. Les passionnés qui choisissent l'un recommandent souvent l'autre.`;
+    }
+    if(last.cat!==product.cat) return `Pour compléter votre système — ${(product.catLabel||"").toLowerCase()}.`;
+    return null;
+  };
+
+  const onCardTap=(product,cardIndex)=>{
+    const isClosing=feedExpanded===product.id;
+    setFeedExpanded(isClosing?null:product.id);
+    if(isClosing) return;
+    const interest={id:product.id,price:product.price,cat:product.cat,name:product.name,sc:product.sc};
+    setFeedInterests(prev=>{
+      if(prev.find(x=>x.id===product.id)) return prev;
+      return[...prev,interest];
+    });
+    const currentOrder=lockedFeedOrder||defaultFeedOrder;
+    const newInterests=[...feedInterests.filter(x=>x.id!==product.id),interest];
+    const frozen=currentOrder.slice(0,cardIndex+1);
+    const tail=currentOrder.slice(cardIndex+1);
+    const scored=scoreAllProducts(tail,newInterests,feedProfile,feedCatBoost);
+    scored.sort((a,b)=>b._affinity-a._affinity);
+    setLockedFeedOrder([...frozen,...scored]);
+  };
+
+  useEffect(()=>{
+    if(feedInterests.length===0) return;
+    const newNudges={};
+    allProducts.forEach(p=>{
+      const nudge=generateFeedNudge(p,feedInterests);
+      if(nudge) newNudges[p.id]=nudge;
+    });
+    setFeedNudgeMap(newNudges);
+  },[feedInterests,allProducts]);
+
+  useEffect(()=>{
+    if(feedProfile) document.getElementById("attentional-feed")?.scrollIntoView({behavior:"smooth"});
+  },[feedProfile]);
+
+  useEffect(()=>{
+    if(feedProfile||feedCatBoost){
+      const scored=scoreAllProducts(allProducts,feedInterests,feedProfile,feedCatBoost);
+      scored.sort((a,b)=>b._affinity-a._affinity);
+      setLockedFeedOrder(scored);
+    }
+  },[feedProfile,feedCatBoost]);
+
+  const handleFeedChat=async()=>{
+    if(!feedChatInput.trim()) return;
+    const msg=feedChatInput.trim();
+    setFeedChatInput("");
+    setFeedChatMsgs(prev=>[...prev,{role:"user",text:msg}]);
+    setFeedChatLoading(true);
+    const lower=msg.toLowerCase();
+    let detectedCat=null;
+    const catLabels={base:"base layers",mid:"mid layers",outer:"couches externes",pants:"pantalons"};
+    if(lower.match(/base.layer|mérinos|sous|première/)) detectedCat="base";
+    else if(lower.match(/polaire|mid|isol|doudoune|deuxième/)) detectedCat="mid";
+    else if(lower.match(/hardshell|imperméable|veste|coupe.vent|troisième|shell/)) detectedCat="outer";
+    else if(lower.match(/pantalon|bas|jambe|softshell.bas/)) detectedCat="pants";
+    setFeedCatBoost(detectedCat);
+    if(detectedCat){
+      const count=allProducts.filter(p=>p.cat===detectedCat).length;
+      setFeedChatMsgs(prev=>[...prev,{role:"ai",text:`Catalogue réorganisé : ${catLabels[detectedCat]} en priorité. ${count} produits correspondent.`}]);
+      setFeedChatLoading(false);
+      return;
+    }
+    const profile=await sendToGemini(msg);
+    setFeedChatLoading(false);
+    if(profile){
+      setFeedProfile(profile);
+      const tagStr=profile.tags&&profile.tags.length>0?` Tags : ${profile.tags.slice(0,5).join(", ")}.`:"";
+      setFeedChatMsgs(prev=>[...prev,{role:"ai",text:(profile.summary||"Profil analysé.")+tagStr+" Le catalogue s'adapte."}]);
+    }
+  };
 
   const total=res?res.reduce((s,p)=>s+p.price,0):0;
   const totalMarket=res?res.reduce((s,p)=>s+Math.round(p.price*(MARKET_MULT[p.cat]||1.3)),0):0;
@@ -483,7 +732,7 @@ function App(){
     <div style={{minHeight:"100vh",background:T.black,color:T.white,fontFamily:T.bf,maxWidth:900,margin:"0 auto"}}>
 
       {/* NUDGE */}
-      {ndg&&<div style={{position:"fixed",bottom:16,left:12,right:12,maxWidth:876,margin:"0 auto",zIndex:999,background:"rgba(122,170,148,0.1)",backdropFilter:"blur(16px)",border:"1px solid rgba(122,170,148,0.2)",padding:"12px 16px",display:"flex",alignItems:"center",gap:10,animation:"nudgeIn 0.4s",borderRadius:4}}>
+      {ndg&&<div style={{position:"fixed",bottom:76,left:12,right:12,maxWidth:876,margin:"0 auto",zIndex:999,background:"rgba(122,170,148,0.1)",backdropFilter:"blur(16px)",border:"1px solid rgba(122,170,148,0.2)",padding:"12px 16px",display:"flex",alignItems:"center",gap:10,animation:"nudgeIn 0.4s",borderRadius:4}}>
         <span style={{fontSize:16,flexShrink:0}}>💡</span>
         <p style={{fontFamily:T.bf,fontSize:12,fontWeight:300,color:T.light,lineHeight:1.5,flex:1}}>{ndg}</p>
         <button onClick={()=>setNdg(null)} style={{background:"none",border:"none",color:T.grey,fontSize:18,cursor:"pointer",padding:0}}>×</button>
@@ -492,7 +741,10 @@ function App(){
       {/* HEADER */}
       <header style={{position:"fixed",top:0,left:0,right:0,zIndex:50,display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px clamp(16px,4vw,32px)",background:ph==="hero"?"transparent":"rgba(10,10,10,0.94)",backdropFilter:ph!=="hero"?"blur(16px)":"none",borderBottom:ph!=="hero"?"1px solid rgba(255,255,255,0.05)":"none",transition:"all 0.4s"}}>
         <div onClick={reset} style={{cursor:"pointer"}}><div style={{fontFamily:T.bf,fontSize:"clamp(14px,2.5vw,18px)",fontWeight:700,letterSpacing:"4px"}}>AYAQ</div><div style={{fontFamily:T.bf,fontSize:7,letterSpacing:"2.5px",color:T.grey,textTransform:"uppercase"}}>Explorers by Nature</div></div>
-        {!["hero","an"].includes(ph)&&<button onClick={reset} style={{background:"none",border:"1px solid rgba(255,255,255,0.1)",padding:"5px 14px",color:T.grey,fontSize:9,fontFamily:T.bf,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer"}}>{ph==="catalogue"?"Accueil":"Recommencer"}</button>}
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          {!["hero","an","catalogue"].includes(ph)&&<button onClick={()=>setPh("catalogue")} style={{background:"none",border:"1px solid rgba(255,255,255,0.06)",padding:"5px 14px",color:T.grey,fontSize:9,fontFamily:T.bf,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer"}}>Catalogue</button>}
+          {!["hero","an"].includes(ph)&&<button onClick={reset} style={{background:"none",border:"1px solid rgba(255,255,255,0.1)",padding:"5px 14px",color:T.grey,fontSize:9,fontFamily:T.bf,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer"}}>{ph==="catalogue"?"Accueil":"Recommencer"}</button>}
+        </div>
       </header>
 
       {/* HERO */}
@@ -505,14 +757,117 @@ function App(){
           <p style={{fontFamily:T.bf,fontSize:"clamp(12px,1.8vw,14px)",fontWeight:300,color:T.grey,lineHeight:1.7,maxWidth:420,marginBottom:28}}>Choisissez votre destination. On détecte la météo sur place et on compose votre système layering AYAQ — membrane Sympatex® ≥45K Schmerber, mérinos RWS 17.5µ, isolation PRIMALOFT® recyclée.</p>
           <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
             <button onClick={()=>setPh("gender")} style={{background:T.white,color:T.black,border:"none",padding:"clamp(12px,2vw,16px) clamp(30px,5vw,48px)",fontFamily:T.bf,fontSize:"clamp(11px,1.5vw,13px)",fontWeight:600,letterSpacing:"3px",textTransform:"uppercase",cursor:"pointer",transition:"background 0.3s"}} onMouseEnter={e=>e.target.style.background=T.acc} onMouseLeave={e=>e.target.style.background=T.white}>Équipez-moi</button>
-            <button onClick={()=>setPh("catalogue")} style={{background:"transparent",color:T.white,border:"1px solid rgba(255,255,255,0.2)",padding:"clamp(12px,2vw,16px) clamp(24px,4vw,36px)",fontFamily:T.bf,fontSize:"clamp(10px,1.3vw,12px)",fontWeight:400,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer",transition:"all 0.3s"}} onMouseEnter={e=>{e.target.style.borderColor="rgba(122,170,148,0.5)";e.target.style.color=T.acc2;}} onMouseLeave={e=>{e.target.style.borderColor="rgba(255,255,255,0.2)";e.target.style.color=T.white;}}>Explorer le catalogue</button>
+            <button onClick={()=>document.getElementById("attentional-feed")?.scrollIntoView({behavior:"smooth"})} style={{background:"transparent",color:T.white,border:"1px solid rgba(255,255,255,0.2)",padding:"clamp(12px,2vw,16px) clamp(24px,4vw,36px)",fontFamily:T.bf,fontSize:"clamp(10px,1.3vw,12px)",fontWeight:400,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer",transition:"all 0.3s"}} onMouseEnter={e=>{e.target.style.borderColor="rgba(122,170,148,0.5)";e.target.style.color=T.acc2;}} onMouseLeave={e=>{e.target.style.borderColor="rgba(255,255,255,0.2)";e.target.style.color=T.white;}}>Explorer le catalogue</button>
           </div>
           <div style={{marginTop:32,display:"flex",gap:"clamp(16px,3vw,28px)",flexWrap:"wrap",animation:"fadeUp 0.8s ease 0.6s both"}}>{[{n:"51K",l:"Schmerber record"},{n:"RET<12",l:"Respirabilité"},{n:"0%",l:"PTFE & PFC"},{n:"🇫🇷🇮🇹🇩🇪🇵🇹",l:"Made in EU"}].map((s,i)=><div key={i}><div style={{fontFamily:T.df,fontSize:"clamp(15px,2vw,18px)",fontWeight:600}}>{s.n}</div><div style={{fontFamily:T.bf,fontSize:8,letterSpacing:"1.5px",color:T.grey,textTransform:"uppercase",marginTop:2}}>{s.l}</div></div>)}</div>
         </div>
       </div>}
 
+      {/* ═══ ATTENTIONAL FEED — directly below hero ═══ */}
+      {ph==="hero"&&<div id="attentional-feed" style={{padding:"0 clamp(16px,4vw,32px) 120px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,margin:"0 0 20px",paddingTop:8}}>
+          <div style={{flex:1,height:1,background:"rgba(255,255,255,0.06)"}}/>
+          <span style={{fontFamily:T.bf,fontSize:9,letterSpacing:"3px",textTransform:"uppercase",color:T.grey}}>Explorez</span>
+          <div style={{flex:1,height:1,background:"rgba(255,255,255,0.06)"}}/>
+        </div>
+        <p style={{textAlign:"center",fontFamily:T.bf,fontSize:11,color:"rgba(255,255,255,0.3)",marginBottom:24,fontWeight:300}}>Scrollez. L'IA observe, apprend, s'adapte.</p>
+
+        {feedInterests.length>0&&<div style={{textAlign:"center",marginBottom:20,animation:"fadeIn 0.5s"}}>
+          <span style={{fontFamily:T.bf,fontSize:10,color:T.acc2,letterSpacing:"1px"}}>{feedInterests.length} centre{feedInterests.length>1?"s":""} d'intérêt détecté{feedInterests.length>1?"s":""}</span>
+          {feedProfile&&<span style={{fontFamily:T.bf,fontSize:10,color:T.grey,marginLeft:8}}>· Profil affiné par l'IA</span>}
+        </div>}
+
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(100%,340px),1fr))",gap:20}}>
+          {getFeedOrder().map((p,i)=>{
+            const isInterested=feedInterests.find(x=>x.id===p.id);
+            const nudge=feedNudgeMap[p.id];
+            const highAffinity=(p._affinity||0)>5;
+            const hasSpecs=!!(p.specs||p.wt);
+            const isOpen=feedExpanded===p.id;
+            return <div key={p.id} style={{animation:"fadeUp 0.4s ease "+(Math.min(i,6)*0.06)+"s both"}}>
+              <div data-feed-id={p.id} onClick={(e)=>{e.preventDefault();onCardTap(p,i);}} style={{position:"relative",overflow:"hidden",aspectRatio:"3/4",cursor:"pointer",...(isInterested?{animation:"dwellGlow 0.6s ease forwards"}:{})}}>
+                <img src={p.img} alt={p.name} loading="lazy" onError={e=>{e.target.style.display="none";}} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"contain",background:"#f0efeb",padding:"8%"}}/>
+                <div style={{position:"absolute",top:8,left:8,background:"rgba(10,10,10,0.82)",padding:"4px 10px",zIndex:3}}><span style={{fontFamily:T.bf,fontSize:8,fontWeight:600,letterSpacing:"1.5px",color:T.acc2}}>{p.catLabel}</span></div>
+                {highAffinity&&<div style={{position:"absolute",top:8,right:8,background:"rgba(122,170,148,0.92)",padding:"4px 10px",zIndex:3,animation:"fadeIn 0.4s"}}><span style={{fontFamily:T.bf,fontSize:8,fontWeight:700,color:"#0a0a0a"}}>Pour vous</span></div>}
+
+                <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"60px 16px 16px",background:"linear-gradient(transparent,rgba(10,10,10,0.9))",zIndex:2,opacity:isOpen?0:1,transition:"opacity 0.3s"}}>
+                  <div style={{fontFamily:T.bf,fontSize:9,color:T.acc2,marginBottom:4,letterSpacing:"1px"}}>{p.type}</div>
+                  <div style={{fontFamily:T.df,fontSize:"clamp(18px,3.5vw,24px)",fontWeight:700,lineHeight:1.15,marginBottom:6}}>{p.name}</div>
+                  <div style={{display:"flex",alignItems:"baseline",gap:10}}>
+                    <span style={{fontFamily:T.bf,fontSize:"clamp(14px,2.5vw,18px)",fontWeight:600}}>{p.price} €</span>
+                    {p.wt&&<span style={{fontFamily:T.bf,fontSize:9,color:T.grey}}>{p.wt}</span>}
+                  </div>
+                  <div style={{fontFamily:T.bf,fontSize:8,color:"rgba(255,255,255,0.35)",marginTop:8,letterSpacing:"1px"}}>TAP POUR DÉTAILS</div>
+                </div>
+
+                <div className={"feed-overlay"+(isOpen?" active":"")} style={{zIndex:4,background:"rgba(10,10,10,0.88)",backdropFilter:"blur(12px)",display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"16px",overflowY:"auto"}}>
+                  <div style={{fontFamily:T.bf,fontSize:9,color:T.acc2,marginBottom:4,letterSpacing:"1px"}}>{p.type}</div>
+                  <div style={{fontFamily:T.df,fontSize:"clamp(16px,3vw,20px)",fontWeight:700,lineHeight:1.15,marginBottom:10}}>{p.name} — {p.price}€</div>
+                  {p.specs&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"1px",marginBottom:10,background:"rgba(255,255,255,0.06)"}}>
+                    {Object.entries(p.specs).map(([k,v])=><div key={k} style={{padding:"6px 8px",background:"rgba(10,10,10,0.5)"}}><div style={{fontFamily:T.bf,fontSize:6,letterSpacing:"1.5px",textTransform:"uppercase",color:T.grey,marginBottom:1}}>{k}</div><div style={{fontFamily:T.bf,fontSize:11,color:T.white,fontWeight:500}}>{v}</div></div>)}
+                  </div>}
+                  {p.why&&<div style={{padding:"6px 10px",background:"rgba(122,170,148,0.06)",borderLeft:"2px solid "+T.acc2,marginBottom:10}}>
+                    <p style={{fontFamily:T.bf,fontSize:10,color:T.light,lineHeight:1.4}}>{p.why}</p>
+                  </div>}
+                  {p.eco&&<p style={{fontFamily:T.bf,fontSize:10,color:"rgba(255,255,255,0.5)",lineHeight:1.4,marginBottom:10,fontWeight:300}}>{p.eco}</p>}
+                  <a href={"https://ayaq.com"+(p.url||"/en")} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} style={{display:"block",padding:"10px",background:T.acc2,color:T.black,fontFamily:T.bf,fontSize:10,fontWeight:600,letterSpacing:"1.5px",textTransform:"uppercase",textAlign:"center",textDecoration:"none",transition:"background 0.3s"}} onMouseEnter={e=>e.target.style.background=T.acc} onMouseLeave={e=>e.target.style.background=T.acc2}>Voir sur AYAQ.com — {p.price}€</a>
+                  <div style={{textAlign:"center",marginTop:8,fontFamily:T.bf,fontSize:8,color:"rgba(255,255,255,0.3)",letterSpacing:"1px"}}>TAP POUR FERMER</div>
+                </div>
+
+                {isInterested&&<div style={{position:"absolute",bottom:0,left:0,right:0,height:2,background:T.acc2,zIndex:5,animation:"fadeIn 0.5s"}}/>}
+              </div>
+              {nudge&&!isOpen&&<div style={{padding:"10px 14px",background:"rgba(122,170,148,0.04)",borderLeft:"2px solid "+T.acc2,animation:"feedReveal 0.4s ease both",overflow:"hidden",marginTop:2}}>
+                <p style={{fontFamily:T.bf,fontSize:11,color:T.light,lineHeight:1.5,fontWeight:300}}>{nudge}</p>
+              </div>}
+            </div>;
+          })}
+        </div>
+
+        <div style={{textAlign:"center",marginTop:32}}>
+          <button onClick={()=>setPh("gender")} style={{padding:"14px 36px",background:T.white,color:T.black,border:"none",fontFamily:T.bf,fontSize:11,fontWeight:600,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer",transition:"background 0.3s"}} onMouseEnter={e=>e.target.style.background=T.acc} onMouseLeave={e=>e.target.style.background=T.white}>Ou configurez votre système en 30s</button>
+        </div>
+      </div>}
+
+      {/* ═══ UNIVERSAL FLOATING CHAT — adapts to context ═══ */}
+      {ph!=="an"&&(()=>{
+        const isHero=ph==="hero";
+        const isStep=["gender","activity","destination","condition","level"].includes(ph);
+        const isRes=ph==="res";
+        const inputVal=isHero?feedChatInput:chatInput;
+        const setInputVal=isHero?setFeedChatInput:setChatInput;
+        const loading=isHero?feedChatLoading:chatLoading;
+        const onSubmit=isHero?handleFeedChat:isStep?handleTextSubmit:handleRefine;
+        const placeholder=isHero
+          ?"Décrivez votre besoin : randonnée hivernale, hardshell imperméable..."
+          :isStep
+          ?"Décrivez votre pratique : ski de rando intense, haute montagne..."
+          :"Affinez : plus chaud, plus léger, budget différent...";
+        const statusText=isHero
+          ?(loading?"Analyse en cours...":feedInterests.length>0?`${feedInterests.length} intérêt${feedInterests.length>1?"s":""} détecté${feedInterests.length>1?"s":""} · L'IA adapte le catalogue`:"L'IA adapte le catalogue en temps réel")
+          :isStep
+          ?(loading?"Analyse de votre profil...":"ou décrivez votre pratique librement — l'IA analyse et configure votre système")
+          :(loading?"Mise à jour du système...":`${ACTS.find(a=>a.id===act)?.label||""} · ${LVLS.find(l=>l.id===lvl)?.label||""} · Affinez votre système en conversant`);
+
+        return <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:50,background:"rgba(10,10,10,0.92)",backdropFilter:"blur(16px)",borderTop:"1px solid rgba(255,255,255,0.06)",padding:"8px clamp(16px,4vw,32px) 12px"}}>
+          <div style={{maxWidth:900,margin:"0 auto"}}>
+            {(()=>{const msgs=isHero?feedChatMsgs:chatMsgs;return msgs.length>0&&<div style={{maxHeight:100,overflowY:"auto",marginBottom:6}}>
+              {msgs.slice(-3).map((m,i)=><div key={i} style={{marginBottom:4,display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
+                <div style={{maxWidth:"80%",padding:"4px 8px",background:m.role==="user"?"rgba(122,170,148,0.1)":"rgba(255,255,255,0.03)",border:m.role==="user"?"1px solid rgba(122,170,148,0.12)":"1px solid rgba(255,255,255,0.04)",borderRadius:m.role==="user"?"6px 6px 2px 6px":"6px 6px 6px 2px"}}>
+                  <p style={{fontFamily:T.bf,fontSize:10,color:m.role==="user"?T.light:T.acc2,lineHeight:1.3}}>{m.text}</p>
+                </div>
+              </div>)}
+            </div>;})()}
+            <div style={{fontFamily:T.bf,fontSize:7,letterSpacing:"2px",textTransform:"uppercase",color:T.grey,marginBottom:5,textAlign:"center"}}>{statusText}</div>
+            <div style={{display:"flex",gap:8}}>
+              <input value={inputVal} onChange={e=>setInputVal(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&inputVal.trim())onSubmit();}} placeholder={placeholder} style={{flex:1,padding:"10px 14px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",color:T.white,fontFamily:T.bf,fontSize:12,outline:"none",transition:"border 0.3s"}} onFocus={e=>e.target.style.borderColor="rgba(122,170,148,0.3)"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.08)"}/>
+              <button onClick={onSubmit} disabled={loading||!inputVal.trim()} style={{padding:"10px 16px",background:inputVal.trim()?T.acc2:"rgba(255,255,255,0.05)",color:inputVal.trim()?T.black:T.grey,border:"none",fontFamily:T.bf,fontSize:11,fontWeight:600,cursor:inputVal.trim()?"pointer":"default",transition:"all 0.3s"}}>→</button>
+            </div>
+          </div>
+        </div>;
+      })()}
+
       {/* STEPS */}
-      {["gender","activity","destination","condition","level"].includes(ph)&&<div style={{minHeight:"100vh",display:"flex",flexDirection:"column",justifyContent:"center",padding:"76px clamp(16px,4vw,40px) 36px",animation:"fadeIn 0.4s"}}>
+      {["gender","activity","destination","condition","level"].includes(ph)&&<div style={{minHeight:"100vh",display:"flex",flexDirection:"column",justifyContent:"center",padding:"76px clamp(16px,4vw,40px) 100px",animation:"fadeIn 0.4s"}}>
         <div style={{display:"flex",gap:3,marginBottom:36,maxWidth:totalSteps*30}}>{Array.from({length:totalSteps},(_,i)=>i+1).map(i=><div key={i} style={{height:2,flex:1,background:i<=sn?T.white:"rgba(255,255,255,0.08)",transition:"background 0.3s"}}/>)}</div>
         <div style={{marginBottom:28,animation:"slideR 0.4s"}}>
           <div style={{fontFamily:T.bf,fontSize:"clamp(8px,1.3vw,10px)",letterSpacing:"4px",textTransform:"uppercase",color:T.acc2,marginBottom:8}}>Étape {sn}/{totalSteps}</div>
@@ -597,7 +952,7 @@ function App(){
       </div>}
 
       {/* RESULTS */}
-      {ph==="res"&&res&&<div onClick={tch} style={{minHeight:"100vh",padding:"80px 0 24px",animation:"fadeIn 0.5s"}}>
+      {ph==="res"&&res&&<div onClick={tch} style={{minHeight:"100vh",padding:"80px 0 80px",animation:"fadeIn 0.5s"}}>
 
         <ConfidenceBanner/>
 

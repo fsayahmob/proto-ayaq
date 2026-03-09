@@ -565,19 +565,24 @@ function App(){
     return result;
   },[allProducts]);
 
-  /* Score products by affinity to interests + profile */
+  /* Score products by affinity to interests + profile.
+     catBoost is DOMINANT: +100 for matching category, -50 for non-matching.
+     This ensures "chaussure" search always shows shoes first. */
   const scoreAllProducts=(products,interests,profile,catBoost)=>{
     return products.map(p=>{
       let aff=0;
-      if(catBoost&&p.cat===catBoost) aff+=20;
-      else if(catBoost&&p.cat!==catBoost) aff-=5;
+      /* Category boost is dominant when user explicitly searched a category */
+      if(catBoost&&p.cat===catBoost) aff+=100;
+      else if(catBoost&&p.cat!==catBoost) aff-=50;
+      /* Tap-based interest signals */
       interests.forEach(int=>{
         if(int.brand===p.brand) aff+=3;
         if(int.cat===p.cat) aff+=1;
         if(Math.abs(int.price-p.price)<40) aff+=2;
         if(p.sc&&int.sc) aff+=p.sc.reduce((s,v,i)=>s+v*(int.sc[i]||0),0)/80;
       });
-      if(profile&&p.sc){
+      /* Profile scoring — only when NO catBoost (otherwise it overrides) */
+      if(!catBoost&&profile&&p.sc){
         try{
           const prof=buildProfile(profile.level||"intermediaire",profile.style||"polyvalent",profile.position||"les-deux",profile.freq||"regulier",profile.injury||"aucune");
           aff+=scoreProduct(p,prof,profile.level||"intermediaire")*2;
@@ -585,15 +590,6 @@ function App(){
       }
       return{...p,_affinity:aff};
     });
-  };
-
-  /* Reorder: freeze items above tapped card, sort only items below by affinity */
-  const reorderBelowIndex=(currentOrder,fromIndex,interests,profile,catBoost)=>{
-    const frozen=currentOrder.slice(0,fromIndex+1);
-    const tail=currentOrder.slice(fromIndex+1);
-    const scored=scoreAllProducts(tail,interests,profile,catBoost);
-    scored.sort((a,b)=>b._affinity-a._affinity);
-    return[...frozen,...scored];
   };
 
   const getFeedOrder=()=>lockedFeedOrder||defaultFeedOrder;
@@ -667,11 +663,17 @@ function App(){
     setFeedChatLoading(true);
     /* Detect product category keywords locally */
     const lower=msg.toLowerCase();
-    if(lower.match(/chaussur|shoe|sprint|appui|semelle/)) setFeedCatBoost("chaussure");
-    else if(lower.match(/raquette|racket|pala|raq/)) setFeedCatBoost("raquette");
-    else if(lower.match(/access|sac|balle|surgrip|housse|grip|protect/)) setFeedCatBoost("accessoire");
-    else setFeedCatBoost(null);
-    /* Also get player profile from Gemini for scoring */
+    let detectedCat=null;
+    if(lower.match(/chaussur|shoe|sprint|appui|semelle/)) detectedCat="chaussure";
+    else if(lower.match(/raquette|racket|pala|raq/)) detectedCat="raquette";
+    else if(lower.match(/access|sac|balle|surgrip|housse|grip|protect/)) detectedCat="accessoire";
+    setFeedCatBoost(detectedCat);
+    /* If pure category search, skip Gemini — instant reorder is enough */
+    if(detectedCat){
+      setFeedChatLoading(false);
+      return;
+    }
+    /* Otherwise, ask Gemini for player profile (e.g. "je suis débutant") */
     const profile=await sendToGemini(msg);
     setFeedChatLoading(false);
     if(profile) setFeedProfile(profile);

@@ -704,7 +704,7 @@ function App(){
     <div style={{minHeight:"100vh",background:T.black,color:T.white,fontFamily:T.bf,maxWidth:900,margin:"0 auto"}}>
 
       {/* NUDGE */}
-      {ndg&&<div style={{position:"fixed",bottom:16,left:12,right:12,maxWidth:876,margin:"0 auto",zIndex:999,background:"rgba(232,168,56,0.1)",backdropFilter:"blur(16px)",border:"1px solid rgba(232,168,56,0.2)",padding:"12px 16px",display:"flex",alignItems:"center",gap:10,animation:"nudgeIn 0.4s",borderRadius:4}}>
+      {ndg&&<div style={{position:"fixed",bottom:76,left:12,right:12,maxWidth:876,margin:"0 auto",zIndex:999,background:"rgba(232,168,56,0.1)",backdropFilter:"blur(16px)",border:"1px solid rgba(232,168,56,0.2)",padding:"12px 16px",display:"flex",alignItems:"center",gap:10,animation:"nudgeIn 0.4s",borderRadius:4}}>
         <span style={{fontSize:16,flexShrink:0}}>🎾</span>
         <p style={{fontFamily:T.bf,fontSize:12,fontWeight:300,color:T.light,lineHeight:1.5,flex:1}}>{ndg}</p>
         <button onClick={()=>setNdg(null)} style={{background:"none",border:"none",color:T.grey,fontSize:18,cursor:"pointer",padding:0}}>×</button>
@@ -717,7 +717,7 @@ function App(){
       </header>
 
       {/* HERO */}
-      {ph==="hero"&&<div style={{minHeight:"100vh",display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"0 clamp(16px,4vw,40px) 48px",position:"relative",background:"linear-gradient(135deg,#1a1200 0%,#0a0a0a 40%,#0a1520 100%)"}}>
+      {ph==="hero"&&<div style={{minHeight:"100vh",display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"0 clamp(16px,4vw,40px) 110px",position:"relative",background:"linear-gradient(135deg,#1a1200 0%,#0a0a0a 40%,#0a1520 100%)"}}>
         <div style={{position:"absolute",inset:0,backgroundImage:"url(https://images.unsplash.com/photo-1646649853703-7645147474ba?w=1600&h=900&fit=crop)",backgroundSize:"cover",backgroundPosition:"center 40%",filter:"brightness(0.25) contrast(1.1)"}}/>
         <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(10,10,10,1) 0%,rgba(10,10,10,0.4) 50%,rgba(10,10,10,0.1) 100%)"}}/>
         <div style={{position:"relative",zIndex:2,animation:"fadeUp 0.8s ease 0.2s both",maxWidth:560}}>
@@ -795,21 +795,47 @@ function App(){
         </div>
       </div>}
 
-      {/* FLOATING FEED INPUT */}
-      {ph==="hero"&&<div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:50,background:"rgba(10,10,10,0.92)",backdropFilter:"blur(16px)",borderTop:"1px solid rgba(255,255,255,0.06)",padding:"8px clamp(16px,4vw,32px) 12px"}}>
-        <div style={{maxWidth:900,margin:"0 auto"}}>
-          <div style={{fontFamily:T.bf,fontSize:7,letterSpacing:"2px",textTransform:"uppercase",color:T.grey,marginBottom:5,textAlign:"center"}}>
-            {feedChatLoading?"Analyse en cours...":feedInterests.length>0?`${feedInterests.length} intérêt${feedInterests.length>1?"s":""} détecté${feedInterests.length>1?"s":""} · L'IA adapte le catalogue`:"L'IA adapte le catalogue en temps réel"}
+      {/* ═══ UNIVERSAL FLOATING CHAT — adapts to context ═══ */}
+      {ph!=="an"&&(()=>{
+        const isHero=ph==="hero";
+        const isStep=["gender","level","style","position","frequency","injury"].includes(ph);
+        const isRes=ph==="res";
+        const inputVal=isHero?feedChatInput:chatInput;
+        const setInputVal=isHero?setFeedChatInput:setChatInput;
+        const loading=isHero?feedChatLoading:chatLoading;
+        const onSubmit=isHero?handleFeedChat:isStep?handleTextSubmit:handleRefine;
+        const placeholder=isHero
+          ?"Décrivez ce que vous cherchez : raquette légère, chaussures terrain dur..."
+          :isStep
+          ?"Décrivez votre jeu : je débute, plutôt défensif, j'ai mal au coude..."
+          :"Affinez : plus léger, moins cher, j'ai aussi mal au genou...";
+        const statusText=isHero
+          ?(loading?"Analyse en cours...":feedInterests.length>0?`${feedInterests.length} intérêt${feedInterests.length>1?"s":""} détecté${feedInterests.length>1?"s":""} · L'IA adapte le catalogue`:"L'IA adapte le catalogue en temps réel")
+          :isStep
+          ?(loading?"Analyse de votre profil...":"ou décrivez votre jeu librement — l'IA analyse et configure votre setup")
+          :(loading?"Mise à jour du setup...":`${LEVELS.find(l=>l.id===level)?.label||""} · ${STYLES.find(s=>s.id===style)?.label||""} · Affinez votre setup en conversant`);
+
+        return <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:50,background:"rgba(10,10,10,0.92)",backdropFilter:"blur(16px)",borderTop:"1px solid rgba(255,255,255,0.06)",padding:"8px clamp(16px,4vw,32px) 12px"}}>
+          <div style={{maxWidth:900,margin:"0 auto"}}>
+            {/* Chat messages — last 3, compact */}
+            {(isStep||isRes)&&chatMsgs.length>0&&<div style={{maxHeight:100,overflowY:"auto",marginBottom:6}}>
+              {chatMsgs.slice(-3).map((m,i)=><div key={i} style={{marginBottom:4,display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
+                <div style={{maxWidth:"80%",padding:"4px 8px",background:m.role==="user"?"rgba(232,168,56,0.1)":"rgba(255,255,255,0.03)",border:m.role==="user"?"1px solid rgba(232,168,56,0.12)":"1px solid rgba(255,255,255,0.04)",borderRadius:m.role==="user"?"6px 6px 2px 6px":"6px 6px 6px 2px"}}>
+                  <p style={{fontFamily:T.bf,fontSize:10,color:m.role==="user"?T.light:T.acc2,lineHeight:1.3}}>{m.text}</p>
+                </div>
+              </div>)}
+            </div>}
+            <div style={{fontFamily:T.bf,fontSize:7,letterSpacing:"2px",textTransform:"uppercase",color:T.grey,marginBottom:5,textAlign:"center"}}>{statusText}</div>
+            <div style={{display:"flex",gap:8}}>
+              <input value={inputVal} onChange={e=>setInputVal(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&inputVal.trim())onSubmit();}} placeholder={placeholder} style={{flex:1,padding:"10px 14px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",color:T.white,fontFamily:T.bf,fontSize:12,outline:"none",transition:"border 0.3s"}} onFocus={e=>e.target.style.borderColor="rgba(232,168,56,0.3)"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.08)"}/>
+              <button onClick={onSubmit} disabled={loading||!inputVal.trim()} style={{padding:"10px 16px",background:inputVal.trim()?T.acc2:"rgba(255,255,255,0.05)",color:inputVal.trim()?T.black:T.grey,border:"none",fontFamily:T.bf,fontSize:11,fontWeight:600,cursor:inputVal.trim()?"pointer":"default",transition:"all 0.3s"}}>→</button>
+            </div>
           </div>
-          <div style={{display:"flex",gap:8}}>
-            <input value={feedChatInput} onChange={e=>setFeedChatInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&feedChatInput.trim())handleFeedChat();}} placeholder="Décrivez ce que vous cherchez : raquette légère pour débutant, chaussures pour terrain dur..." style={{flex:1,padding:"10px 14px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",color:T.white,fontFamily:T.bf,fontSize:12,outline:"none",transition:"border 0.3s"}} onFocus={e=>e.target.style.borderColor="rgba(232,168,56,0.3)"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.08)"}/>
-            <button onClick={handleFeedChat} disabled={feedChatLoading||!feedChatInput.trim()} style={{padding:"10px 16px",background:feedChatInput.trim()?T.acc2:"rgba(255,255,255,0.05)",color:feedChatInput.trim()?T.black:T.grey,border:"none",fontFamily:T.bf,fontSize:11,fontWeight:600,cursor:feedChatInput.trim()?"pointer":"default",transition:"all 0.3s"}}>→</button>
-          </div>
-        </div>
-      </div>}
+        </div>;
+      })()}
 
       {/* STEPS */}
-      {["gender","level","style","position","frequency","injury"].includes(ph)&&<div style={{minHeight:"100vh",display:"flex",flexDirection:"column",justifyContent:"center",padding:"76px clamp(16px,4vw,40px) 36px",animation:"fadeIn 0.4s"}}>
+      {["gender","level","style","position","frequency","injury"].includes(ph)&&<div style={{minHeight:"100vh",display:"flex",flexDirection:"column",justifyContent:"center",padding:"76px clamp(16px,4vw,40px) 100px",animation:"fadeIn 0.4s"}}>
         <div style={{display:"flex",gap:3,marginBottom:36,maxWidth:totalSteps*30}}>{Array.from({length:totalSteps},(_,i)=>i+1).map(i=><div key={i} style={{height:2,flex:1,background:i<=sn?T.acc2:"rgba(255,255,255,0.08)",transition:"background 0.3s"}}/>)}</div>
         <div style={{marginBottom:28,animation:"slideR 0.4s"}}>
           <div style={{fontFamily:T.bf,fontSize:"clamp(8px,1.3vw,10px)",letterSpacing:"4px",textTransform:"uppercase",color:T.acc2,marginBottom:8}}>Étape {sn}/{totalSteps}</div>
@@ -847,27 +873,6 @@ function App(){
         {/* Injury */}
         {ph==="injury"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,maxWidth:420}}>{INJURIES.map((inj,idx)=><div key={inj.id} onClick={()=>doInjury(inj.id)} style={{cursor:"pointer",position:"relative",overflow:"hidden",aspectRatio:"3/4",background:"#111",animation:"fadeUp 0.4s ease "+(idx*0.06)+"s both"}}><img src={inj.img} alt={inj.label} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover",filter:"brightness(0.4)",transition:"filter 0.3s"}} onMouseEnter={e=>e.target.style.filter="brightness(0.6)"} onMouseLeave={e=>e.target.style.filter="brightness(0.4)"}/><div style={{position:"absolute",inset:0,background:"linear-gradient(transparent 40%,rgba(0,0,0,0.85))",display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"10px 8px"}}><span style={{fontSize:22,marginBottom:2}}>{inj.e}</span><span style={{fontFamily:T.bf,fontSize:"clamp(10px,1.5vw,12px)",fontWeight:600}}>{inj.label}</span><span style={{fontFamily:T.bf,fontSize:9,color:T.grey,marginTop:2}}>{inj.d}</span></div></div>)}</div>}
 
-        {/* ═══ INLINE FREE TEXT — always visible below choices ═══ */}
-        {ph!=="gender"&&<div style={{marginTop:32,maxWidth:500,animation:"fadeUp 0.6s ease 0.4s both"}}>
-          <div style={{height:1,background:"rgba(255,255,255,0.06)",marginBottom:20}}/>
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
-            <div style={{width:20,height:1,background:T.acc2}}/>
-            <span style={{fontFamily:T.bf,fontSize:10,color:T.grey,letterSpacing:"1px"}}>ou décrivez votre jeu librement</span>
-            <div style={{flex:1,height:1,background:"rgba(255,255,255,0.06)"}}/>
-          </div>
-          {chatMsgs.length>0&&<div style={{marginBottom:10}}>
-            {chatMsgs.map((m,i)=><div key={i} style={{marginBottom:8,display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",animation:"fadeUp 0.3s"}}>
-              <div style={{maxWidth:"85%",padding:"8px 12px",background:m.role==="user"?"rgba(232,168,56,0.1)":"rgba(255,255,255,0.03)",border:m.role==="user"?"1px solid rgba(232,168,56,0.15)":"1px solid rgba(255,255,255,0.05)",borderRadius:m.role==="user"?"10px 10px 2px 10px":"10px 10px 10px 2px"}}>
-                <p style={{fontFamily:T.bf,fontSize:12,color:m.role==="user"?T.light:T.acc2,lineHeight:1.5}}>{m.text}</p>
-              </div>
-            </div>)}
-          </div>}
-          {chatLoading&&<div style={{display:"flex",gap:4,padding:"6px 0",animation:"fadeIn 0.3s"}}>{[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:T.acc2,animation:"pulse 1s ease "+(i*0.2)+"s infinite"}}/>)}</div>}
-          <div style={{display:"flex",gap:8}}>
-            <input value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&chatInput.trim())handleTextSubmit();}} placeholder="Ex: Je joue depuis 1 an, plutôt défensif, j'ai mal au coude..." style={{flex:1,padding:"11px 14px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",color:T.white,fontFamily:T.bf,fontSize:12,outline:"none",transition:"border 0.3s"}} onFocus={e=>e.target.style.borderColor="rgba(232,168,56,0.3)"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.08)"}/>
-            <button onClick={handleTextSubmit} disabled={chatLoading||!chatInput.trim()} style={{padding:"11px 18px",background:chatInput.trim()?T.acc2:"rgba(255,255,255,0.05)",color:chatInput.trim()?T.black:T.grey,border:"none",fontFamily:T.bf,fontSize:10,fontWeight:600,letterSpacing:"1px",cursor:chatInput.trim()?"pointer":"default",transition:"all 0.3s"}}>→</button>
-          </div>
-        </div>}
       </div>}
 
       {/* ANALYZING */}
@@ -886,29 +891,7 @@ function App(){
       </div>}
 
       {/* RESULTS */}
-      {ph==="res"&&res&&<div onClick={tch} style={{minHeight:"100vh",padding:"80px 0 24px",animation:"fadeIn 0.5s"}}>
-
-        {/* ═══ CONVERSATIONAL REFINEMENT — en haut, c'est le coeur LLM ═══ */}
-        <div style={{margin:"0 clamp(16px,4vw,32px) 16px",padding:"14px 16px",background:"rgba(232,168,56,0.04)",border:"1px solid rgba(232,168,56,0.1)",animation:"slideDown 0.4s"}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:chatMsgs.length>0?10:8}}>
-            <span style={{fontFamily:T.bf,fontSize:11,color:T.light}}>
-              {LEVELS.find(l=>l.id===level)?.label} · {STYLES.find(s=>s.id===style)?.label} · {POSITIONS.find(p=>p.id===position)?.label} · {FREQS.find(f=>f.id===freq)?.label}
-              {injury!=="aucune"&&<span style={{color:"#e88"}}> · {INJURIES.find(i=>i.id===injury)?.label}</span>}
-            </span>
-          </div>
-          {chatMsgs.length>0&&<div style={{maxHeight:150,overflowY:"auto",marginBottom:8}}>
-            {chatMsgs.slice(-4).map((m,i)=><div key={i} style={{marginBottom:6,display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",animation:"fadeUp 0.2s"}}>
-              <div style={{maxWidth:"80%",padding:"6px 10px",background:m.role==="user"?"rgba(232,168,56,0.1)":"rgba(255,255,255,0.03)",border:m.role==="user"?"1px solid rgba(232,168,56,0.15)":"1px solid rgba(255,255,255,0.05)",borderRadius:m.role==="user"?"8px 8px 2px 8px":"8px 8px 8px 2px"}}>
-                <p style={{fontFamily:T.bf,fontSize:11,color:m.role==="user"?T.light:T.acc2,lineHeight:1.4}}>{m.text}</p>
-              </div>
-            </div>)}
-          </div>}
-          {chatLoading&&<div style={{display:"flex",gap:4,padding:"4px 0"}}>{[0,1,2].map(i=><div key={i} style={{width:4,height:4,borderRadius:"50%",background:T.acc2,animation:"pulse 1s ease "+(i*0.2)+"s infinite"}}/>)}</div>}
-          <div style={{display:"flex",gap:6}}>
-            <input value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&chatInput.trim())handleRefine();}} placeholder="Affinez : plus léger, moins cher, j'ai aussi mal au genou..." style={{flex:1,padding:"9px 12px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",color:T.white,fontFamily:T.bf,fontSize:11,outline:"none",transition:"border 0.3s"}} onFocus={e=>e.target.style.borderColor="rgba(232,168,56,0.3)"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.06)"}/>
-            <button onClick={handleRefine} disabled={chatLoading||!chatInput.trim()} style={{padding:"9px 14px",background:chatInput.trim()?T.acc2:"rgba(255,255,255,0.05)",color:chatInput.trim()?T.black:T.grey,border:"none",fontFamily:T.bf,fontSize:10,fontWeight:600,cursor:chatInput.trim()?"pointer":"default",transition:"all 0.3s"}}>→</button>
-          </div>
-        </div>
+      {ph==="res"&&res&&<div onClick={tch} style={{minHeight:"100vh",padding:"80px 0 100px",animation:"fadeIn 0.5s"}}>
 
         <div style={{padding:"0 clamp(16px,4vw,32px)",marginBottom:16}}>
           <div style={{fontFamily:T.bf,fontSize:"clamp(8px,1.3vw,10px)",letterSpacing:"4px",textTransform:"uppercase",color:T.acc2,marginBottom:8}}>Votre setup recommandé</div>

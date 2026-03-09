@@ -425,7 +425,7 @@ function App(){
   const reset=()=>{setPh("hero");setAct(null);setSea(autoDetectSeason());setCond(null);setLvl(null);setGen(null);setDest(null);setRes(null);setExC(null);setSA(null);setNdg(null);setNs({});setShowOverride(false);setActiveLayer(null);setManualCond(false);setWCity(null);setWTemp(null);setFeedInterests([]);setFeedChatInput("");setFeedChatMsgs([]);setFeedProfile(null);setFeedChatLoading(false);setFeedExpanded(null);setFeedCatBoost(null);setLockedFeedOrder(null);setChatInput("");setChatMsgs([]);window.scrollTo(0,0);};
 
   /* ═══ GEMINI / HEURISTIC ═══ */
-  const WORKER_URL=window.__AYAQ_WORKER_URL||"/api/gemini";
+  const WORKER_URL=window.__AYAQ_WORKER_URL||"/api/gemini-ayaq";
   const[chatInput,setChatInput]=useState("");
   const[chatMsgs,setChatMsgs]=useState([]);
   const[chatLoading,setChatLoading]=useState(false);

@@ -51,8 +51,7 @@ margin-bottom:8px;text-transform:uppercase}
 .bundle-card{position:absolute;top:0;left:12px;right:12px;bottom:12px;
 background:var(--bg-card);border-radius:16px;border:1px solid var(--border);
 display:flex;flex-direction:column;cursor:grab;user-select:none;
-transition:none;will-change:transform;overflow-y:auto;overflow-x:hidden;
--webkit-overflow-scrolling:touch}
+transition:none;will-change:transform;overflow-y:hidden;overflow-x:hidden}
 .bundle-card.animating{transition:transform .4s cubic-bezier(.25,.46,.45,.94),opacity .4s ease;pointer-events:none}
 .bundle-card.entering{animation:cardEnter .35s cubic-bezier(.22,1,.36,1) forwards}
 @keyframes cardEnter{from{transform:translateX(var(--enter-from,100px));opacity:0}to{transform:translateX(0);opacity:1}}
@@ -228,20 +227,26 @@ async function fetchAllProducts() {
   let cursor = null;
   let hasNext = true;
   while (hasNext) {
-    const res = await fetch(STOREFRONT_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Shopify-Storefront-Access-Token': STOREFRONT_TOKEN
-      },
-      body: JSON.stringify({ query: PRODUCTS_QUERY, variables: { cursor } })
-    });
-    const json = await res.json();
-    const data = json.data.products;
-    const products = data.edges.map(e => e.node).filter(p => p.availableForSale);
-    all = all.concat(products);
-    hasNext = data.pageInfo.hasNextPage;
-    cursor = data.pageInfo.endCursor;
+    try {
+      const res = await fetch(STOREFRONT_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Shopify-Storefront-Access-Token': STOREFRONT_TOKEN
+        },
+        body: JSON.stringify({ query: PRODUCTS_QUERY, variables: { cursor } })
+      });
+      const json = await res.json();
+      if (!json.data || !json.data.products) { hasNext = false; break; }
+      const data = json.data.products;
+      const products = data.edges.map(e => e.node).filter(p => p.availableForSale);
+      all = all.concat(products);
+      hasNext = data.pageInfo.hasNextPage;
+      cursor = data.pageInfo.endCursor;
+    } catch (e) {
+      console.warn('[Shopify] Fetch error:', e.message);
+      hasNext = false;
+    }
   }
   return all;
 }
@@ -274,6 +279,7 @@ async function fetchWeather() {
 function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
 function weightedPick(arr, brandPrefs, avoidIds) {
+  if (!arr || arr.length === 0) return null;
   const filtered = arr.filter(p => !avoidIds.has(p.handle));
   if (filtered.length === 0) return pickRandom(arr);
   if (Object.keys(brandPrefs).length === 0) return pickRandom(filtered);
@@ -689,22 +695,35 @@ function App() {
   // Touch/mouse handlers
   const handleDragStart = useCallback((clientX, clientY) => {
     if (isAnimating) return;
-    dragRef.current = { startX: clientX, startY: clientY, dragging: true, startTime: Date.now() };
+    dragRef.current = { startX: clientX, startY: clientY, dragging: true, locked: false, startTime: Date.now() };
   }, [isAnimating]);
 
-  const handleDragMove = useCallback((clientX) => {
+  const handleDragMove = useCallback((clientX, clientY) => {
     if (!dragRef.current.dragging || isAnimating) return;
     const dx = clientX - dragRef.current.startX;
+    const dy = clientY - dragRef.current.startY;
+    // If vertical scroll is dominant, cancel horizontal drag
+    if (!dragRef.current.locked) {
+      if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 10) {
+        dragRef.current.dragging = false;
+        setSwipeOffset(0);
+        return;
+      }
+      if (Math.abs(dx) > 10) dragRef.current.locked = true;
+    }
     setSwipeOffset(dx);
   }, [isAnimating]);
 
   const handleDragEnd = useCallback((clientX) => {
-    if (!dragRef.current.dragging || isAnimating) return;
+    if (!dragRef.current.dragging || isAnimating) { dragRef.current.dragging = false; return; }
     dragRef.current.dragging = false;
+    dragRef.current.locked = false;
     const dx = clientX - dragRef.current.startX;
-    if (dx > 100) {
+    const elapsed = Date.now() - dragRef.current.startTime;
+    // Fast swipe (velocity-based) or distance-based
+    if (dx > 100 || (dx > 50 && elapsed < 300)) {
       handleNewBundle('right');
-    } else if (dx < -100) {
+    } else if (dx < -100 || (dx < -50 && elapsed < 300)) {
       handleNewBundle('left');
     } else {
       setSwipeOffset(0);
@@ -712,7 +731,7 @@ function App() {
   }, [isAnimating, handleNewBundle]);
 
   const onTouchStart = useCallback(e => handleDragStart(e.touches[0].clientX, e.touches[0].clientY), [handleDragStart]);
-  const onTouchMove = useCallback(e => handleDragMove(e.touches[0].clientX), [handleDragMove]);
+  const onTouchMove = useCallback(e => handleDragMove(e.touches[0].clientX, e.touches[0].clientY), [handleDragMove]);
   const onTouchEnd = useCallback(e => handleDragEnd(e.changedTouches[0].clientX), [handleDragEnd]);
   const onMouseDown = useCallback(e => handleDragStart(e.clientX, e.clientY), [handleDragStart]);
   const onMouseMove = useCallback(e => { if (dragRef.current.dragging) handleDragMove(e.clientX); }, [handleDragMove]);
@@ -720,7 +739,7 @@ function App() {
 
   // Slot tap
   const handleSlotTap = useCallback((slot) => {
-    if (isAnimating) return;
+    if (isAnimating || Math.abs(swipeOffset) > 5) return;
     if (activeSlot === slot) {
       setActiveSlot(null);
       setAlternatives(null);
@@ -796,8 +815,8 @@ function App() {
              onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
              onMouseDown={onMouseDown}>
 
-          <div className="swipe-indicator left" style={{ opacity: leftIndicatorOpacity }}>Autre chose →</div>
-          <div className="swipe-indicator right" style={{ opacity: rightIndicatorOpacity }}>← J'aime</div>
+          <div className="swipe-indicator left" style={{ opacity: leftIndicatorOpacity }}>← Autre chose</div>
+          <div className="swipe-indicator right" style={{ opacity: rightIndicatorOpacity }}>J'aime →</div>
 
           <div className="bundle-card-inner">
             <div className="products-grid">

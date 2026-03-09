@@ -212,7 +212,8 @@ opacity:.5;animation:peekBounce 2s ease-in-out infinite;letter-spacing:.15em}
 .scroll-peek-text{font-size:.55rem;color:var(--text-secondary);opacity:.4;
 letter-spacing:.08em;text-transform:uppercase;margin-top:1px}
 
-.bundle-details{padding:0 14px 20px}
+.bundle-details{padding:16px 14px 20px;background:var(--bg-card-hover);
+border-radius:12px 12px 0 0;margin-top:4px}
 .detail-card{border-top:1px solid var(--border);padding:16px 0}
 .detail-card:first-child{border-top:none}
 .detail-card-slot{font-size:.6rem;color:var(--text-secondary);text-transform:uppercase;
@@ -1646,16 +1647,29 @@ function App() {
     }
   }, [bundleCount]);
 
-  // Idle wiggle — shake the card after 4s of inactivity to hint swipe
+  // Idle wiggle — shake every 5s of inactivity, reset on any touch
   const [idleHint, setIdleHint] = useState(false);
-  useEffect(() => {
-    if (!currentBundle || isAnimating) return;
-    const timer = setTimeout(() => {
+  const idleRef = useRef(null);
+  const startIdleTimer = useCallback(() => {
+    clearInterval(idleRef.current);
+    setIdleHint(false);
+    idleRef.current = setInterval(() => {
       setIdleHint(true);
       setTimeout(() => setIdleHint(false), 800);
-    }, 4000);
-    return () => clearTimeout(timer);
-  }, [currentBundle, isAnimating, bundleCount]);
+    }, 5000);
+  }, []);
+  useEffect(() => {
+    if (!currentBundle || isAnimating) return;
+    startIdleTimer();
+    const reset = () => startIdleTimer();
+    window.addEventListener('touchstart', reset, { passive: true });
+    window.addEventListener('mousedown', reset);
+    return () => {
+      clearInterval(idleRef.current);
+      window.removeEventListener('touchstart', reset);
+      window.removeEventListener('mousedown', reset);
+    };
+  }, [currentBundle, isAnimating, bundleCount, startIdleTimer]);
 
   // Touch/mouse handlers
   // Track card scroll position

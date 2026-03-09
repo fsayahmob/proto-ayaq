@@ -52,7 +52,7 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
 
   try {
-    const { message } = req.body;
+    const { message, currentProfile } = req.body;
     if (!message || typeof message !== "string" || message.length > 2000) {
       return res.status(400).json({ error: "Invalid message" });
     }
@@ -62,6 +62,12 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "GEMINI_API_KEY not configured" });
     }
 
+    // Build prompt: if refining an existing profile, include context
+    let userText = message;
+    if (currentProfile && typeof currentProfile === "object") {
+      userText = `Profil actuel du joueur : level=${currentProfile.level}, style=${currentProfile.style}, position=${currentProfile.position}, freq=${currentProfile.freq}, injury=${currentProfile.injury}.\n\nLe joueur demande maintenant : "${message}"\n\nMets à jour son profil en tenant compte de sa demande. Ne change que les champs concernés par sa demande, garde les autres identiques.`;
+    }
+
     const geminiResp = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
       {
@@ -69,7 +75,7 @@ export default async function handler(req, res) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-          contents: [{ parts: [{ text: message }] }],
+          contents: [{ parts: [{ text: userText }] }],
           generationConfig: {
             temperature: 0.3,
             maxOutputTokens: 300,

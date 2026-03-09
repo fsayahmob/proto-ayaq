@@ -15,6 +15,8 @@ body{background:#0a0a0a;overflow-x:hidden;-webkit-font-smoothing:antialiased}
 @keyframes pulse{0%,100%{opacity:0.2}50%{opacity:1}}
 @keyframes nudgeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
 @keyframes slideDown{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes feedReveal{from{opacity:0;max-height:0;transform:translateY(8px)}to{opacity:1;max-height:200px;transform:translateY(0)}}
+@keyframes dwellGlow{0%{box-shadow:inset 0 0 0 0 rgba(232,168,56,0)}100%{box-shadow:inset 0 0 0 1px rgba(232,168,56,0.3)}}
 ::-webkit-scrollbar{width:4px}
 ::-webkit-scrollbar-track{background:#0a0a0a}
 ::-webkit-scrollbar-thumb{background:#333}
@@ -28,7 +30,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const {useState,useEffect,useRef}=React;
+const {useState,useEffect,useRef,useCallback,useMemo}=React;
 const T={black:"#0a0a0a",ch:"#161616",grey:"#8a8a8a",light:"#c8c8c8",white:"#fafaf8",acc:"#f5d6a0",acc2:"#e8a838",df:"'Cormorant Garamond',Georgia,serif",bf:"'Outfit',system-ui,sans-serif"};
 
 /* ═══ PADEL EXPERTISE — SCORING ENGINE ═══
@@ -46,45 +48,45 @@ const T={black:"#0a0a0a",ch:"#161616",grey:"#8a8a8a",light:"#c8c8c8",white:"#faf
 
 /* ═══ PLAYER LEVELS ═══ */
 const LEVELS=[
-  {id:"debutant",label:"Je débute",e:"🟢",d:"Moins de 6 mois de pratique",img:"https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?w=400&h=500&fit=crop"},
-  {id:"intermediaire",label:"Intermédiaire",e:"🟡",d:"1-3 ans, je maîtrise les bases",img:"https://images.unsplash.com/photo-1526888935184-a82d2a4b7e67?w=400&h=500&fit=crop"},
-  {id:"avance",label:"Avancé",e:"🟠",d:"3+ ans, compétition occasionnelle",img:"https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?w=400&h=500&fit=crop"},
-  {id:"expert",label:"Expert / Compétiteur",e:"🔴",d:"Tournois réguliers, classé",img:"https://images.unsplash.com/photo-1531315396756-905d68d21b56?w=400&h=500&fit=crop"},
+  {id:"debutant",label:"Je débute",e:"🟢",d:"Moins de 6 mois de pratique",img:"https://images.unsplash.com/photo-1715333148734-a8cfb0db1f6c?w=400&h=500&fit=crop"},
+  {id:"intermediaire",label:"Intermédiaire",e:"🟡",d:"1-3 ans, je maîtrise les bases",img:"https://images.unsplash.com/photo-1646651105426-e8c8ee9badde?w=400&h=500&fit=crop"},
+  {id:"avance",label:"Avancé",e:"🟠",d:"3+ ans, compétition occasionnelle",img:"https://images.unsplash.com/photo-1767128890439-1af9ca2ff1ac?w=400&h=500&fit=crop"},
+  {id:"expert",label:"Expert / Compétiteur",e:"🔴",d:"Tournois réguliers, classé",img:"https://images.unsplash.com/photo-1763560836998-bdeb531e8541?w=400&h=500&fit=crop"},
 ];
 
 /* ═══ PLAY STYLES ═══ */
 const STYLES=[
-  {id:"controle",label:"Contrôle",e:"🎯",d:"Placement, patience, lobs, bandeja",img:"https://images.unsplash.com/photo-1599586120429-48281b6f0ece?w=400&h=500&fit=crop"},
-  {id:"polyvalent",label:"Polyvalent",e:"⚖️",d:"Je m'adapte à toutes les situations",img:"https://images.unsplash.com/photo-1560012057-4372e14c5085?w=400&h=500&fit=crop"},
-  {id:"puissance",label:"Puissance",e:"💥",d:"Smash, remates, jeu agressif",img:"https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=400&h=500&fit=crop"},
+  {id:"controle",label:"Contrôle",e:"🎯",d:"Placement, patience, lobs, bandeja",img:"https://plus.unsplash.com/premium_photo-1707862953516-9dd3032b69a8?w=400&h=500&fit=crop"},
+  {id:"polyvalent",label:"Polyvalent",e:"⚖️",d:"Je m'adapte à toutes les situations",img:"https://plus.unsplash.com/premium_photo-1708692920701-19a470ecd667?w=400&h=500&fit=crop"},
+  {id:"puissance",label:"Puissance",e:"💥",d:"Smash, remates, jeu agressif",img:"https://plus.unsplash.com/premium_photo-1768803218345-1d42590e3f21?w=400&h=500&fit=crop"},
 ];
 
 /* ═══ POSITION ═══ */
 const POSITIONS=[
-  {id:"droite",label:"Côté droit",e:"👉",d:"Revés, défense, construction du point",img:"https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=400&h=500&fit=crop&crop=left"},
-  {id:"gauche",label:"Côté gauche",e:"👈",d:"Attaque, volée, smash",img:"https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=400&h=500&fit=crop&crop=right"},
-  {id:"les-deux",label:"Les deux",e:"🔄",d:"Je joue des deux côtés",img:"https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=400&h=500&fit=crop&crop=center"},
+  {id:"droite",label:"Côté droit",e:"👉",d:"Revés, défense, construction du point",img:"https://images.unsplash.com/photo-1646649851800-48dba35edc76?w=400&h=500&fit=crop"},
+  {id:"gauche",label:"Côté gauche",e:"👈",d:"Attaque, volée, smash",img:"https://plus.unsplash.com/premium_photo-1708692919998-e3dc853ef8a8?w=400&h=500&fit=crop"},
+  {id:"les-deux",label:"Les deux",e:"🔄",d:"Je joue des deux côtés",img:"https://images.unsplash.com/photo-1646649852033-7e0f3d679f8b?w=400&h=500&fit=crop"},
 ];
 
 /* ═══ FREQUENCY ═══ */
 const FREQS=[
-  {id:"occasionnel",label:"Occasionnel",e:"1×",d:"1-2 fois par mois",img:"https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=400&h=500&fit=crop&crop=bottom"},
-  {id:"regulier",label:"Régulier",e:"2×",d:"1-2 fois par semaine",img:"https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=400&h=500&fit=crop&crop=center"},
-  {id:"intensif",label:"Intensif",e:"4×",d:"3+ fois par semaine",img:"https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=400&h=500&fit=crop&crop=top"},
+  {id:"occasionnel",label:"Occasionnel",e:"1×",d:"1-2 fois par mois",img:"https://images.unsplash.com/photo-1767128890576-ecc5c643f9c4?w=400&h=500&fit=crop"},
+  {id:"regulier",label:"Régulier",e:"2×",d:"1-2 fois par semaine",img:"https://plus.unsplash.com/premium_photo-1769041119941-01231a6883fa?w=400&h=500&fit=crop"},
+  {id:"intensif",label:"Intensif",e:"4×",d:"3+ fois par semaine",img:"https://plus.unsplash.com/premium_photo-1769041179214-11b823787356?w=400&h=500&fit=crop"},
 ];
 
 /* ═══ INJURY PROFILES ═══ */
 const INJURIES=[
-  {id:"aucune",label:"Aucune",e:"✅",d:"Pas de douleurs particulières",img:"https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=400&h=500&fit=crop&crop=entropy"},
-  {id:"coude",label:"Coude / Tennis elbow",e:"💪",d:"Douleurs au coude ou avant-bras",img:"https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=400&h=500&fit=crop&crop=top"},
-  {id:"epaule",label:"Épaule / Poignet",e:"🦾",d:"Fragilité articulaire haut du corps",img:"https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=400&h=500&fit=crop&crop=entropy"},
-  {id:"genoux",label:"Genoux / Chevilles",e:"🦵",d:"Fragilité membres inférieurs",img:"https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=400&h=500&fit=crop&crop=left"},
+  {id:"aucune",label:"Aucune",e:"✅",d:"Pas de douleurs particulières",img:"https://plus.unsplash.com/premium_photo-1708692921020-e58a86c83b5a?w=400&h=500&fit=crop"},
+  {id:"coude",label:"Coude / Tennis elbow",e:"💪",d:"Douleurs au coude ou avant-bras",img:"https://images.unsplash.com/photo-1654431965323-7454217c89b7?w=400&h=500&fit=crop"},
+  {id:"epaule",label:"Épaule / Poignet",e:"🦾",d:"Fragilité articulaire haut du corps",img:"https://images.unsplash.com/photo-1770653927355-2ba81c1522df?w=400&h=500&fit=crop"},
+  {id:"genoux",label:"Genoux / Chevilles",e:"🦵",d:"Fragilité membres inférieurs",img:"https://plus.unsplash.com/premium_photo-1663100626806-c99906d975f6?w=400&h=500&fit=crop"},
 ];
 
 /* ═══ GENDER ═══ */
 const GENS=[
-  {id:"h",label:"Homme",e:"♂",img:"https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?w=400&h=500&fit=crop"},
-  {id:"f",label:"Femme",e:"♀",img:"https://images.unsplash.com/photo-1545151414-8a948e1ea54f?w=400&h=500&fit=crop"},
+  {id:"h",label:"Homme",e:"♂",img:"https://images.unsplash.com/photo-1646651105454-6c167ea6f83b?w=400&h=500&fit=crop"},
+  {id:"f",label:"Femme",e:"♀",img:"https://images.unsplash.com/photo-1646649851780-d9701b7c3c04?w=400&h=500&fit=crop"},
 ];
 
 /* ═══ CATALOG — REAL DATA from esprit-padel-shop.com ═══
@@ -397,8 +399,6 @@ const ND={
 /* ═══ APP ═══ */
 function App(){
   const[ph,setPh]=useState("hero");
-  const[catFilter,setCatFilter]=useState("raquette");
-  const[catSort,setCatSort]=useState("score");
   const[textMode,setTextMode]=useState(false);
   const[chatInput,setChatInput]=useState("");
   const[chatMsgs,setChatMsgs]=useState([]);
@@ -442,7 +442,7 @@ function App(){
     setSA(null);
   };
 
-  const reset=()=>{setPh("hero");setGen(null);setLevel(null);setStyle(null);setPosition(null);setFreq(null);setInjury(null);setRes(null);setExC(null);setSA(null);setNdg(null);setNs({});setBudgetMax(400);window.scrollTo(0,0);};
+  const reset=()=>{setPh("hero");setGen(null);setLevel(null);setStyle(null);setPosition(null);setFreq(null);setInjury(null);setRes(null);setExC(null);setSA(null);setNdg(null);setNs({});setBudgetMax(400);setChatMsgs([]);setChatInput("");window.scrollTo(0,0);};
 
   /* ═══ GEMINI TEXT MODE ═══ */
   const heuristicFallback=(userMsg)=>{
@@ -464,10 +464,12 @@ function App(){
     return profile;
   };
 
-  const sendToGemini=async(userMsg)=>{
+  const sendToGemini=async(userMsg,currentProfile)=>{
     /* Try API first, fallback to heuristic */
     try{
-      const resp=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:userMsg})});
+      const body={message:userMsg};
+      if(currentProfile) body.currentProfile=currentProfile;
+      const resp=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       if(resp.ok){const data=await resp.json();if(data.level) return data;}
     }catch(e){}
     /* Fallback heuristique si API indisponible */
@@ -484,13 +486,11 @@ function App(){
     setChatLoading(false);
     if(profile){
       setChatMsgs(prev=>[...prev,{role:"ai",text:profile.summary||"Profil analysé. Voici votre setup."}]);
-      /* Apply profile */
       if(profile.level) setLevel(profile.level);
       if(profile.style) setStyle(profile.style);
       if(profile.position) setPosition(profile.position);
       if(profile.freq) setFreq(profile.freq);
       if(profile.injury) setInjury(profile.injury);
-      /* Go to results after short delay */
       setTimeout(()=>{
         const l=profile.level||"intermediaire";
         const s=profile.style||"polyvalent";
@@ -506,11 +506,161 @@ function App(){
     }
   };
 
+  /* ═══ REFINE — conversation in results page ═══ */
+  const handleRefine=async()=>{
+    if(!chatInput.trim())return;
+    const userMsg=chatInput.trim();
+    setChatInput("");
+    setChatMsgs(prev=>[...prev,{role:"user",text:userMsg}]);
+    setChatLoading(true);
+    const currentProfile={level,style,position,freq,injury};
+    const profile=await sendToGemini(userMsg,currentProfile);
+    setChatLoading(false);
+    if(profile){
+      setChatMsgs(prev=>[...prev,{role:"ai",text:profile.summary||"Setup mis à jour."}]);
+      const l=profile.level||level;
+      const s=profile.style||style;
+      const p=profile.position||position;
+      const f=profile.freq||freq;
+      const inj=profile.injury||injury;
+      setLevel(l);setStyle(s);setPosition(p);setFreq(f);setInjury(inj);
+      const r=getRecs(l,s,p,f,inj,gen,budgetMax);
+      setRes(r);
+    }
+  };
+
   /* "Me conseiller" smart defaults */
   const adviseMe=(step)=>{
     if(step==="level"){setLevel("intermediaire");setPh("style");}
     else if(step==="style"){setStyle("polyvalent");setPh("position");}
     else if(step==="position"){setPosition("les-deux");setPh("frequency");}
+  };
+
+  /* ═══ ATTENTIONAL FEED — Catalogue intelligent ═══ */
+  const [feedInterests,setFeedInterests]=useState([]);
+  const [feedNudgeMap,setFeedNudgeMap]=useState({});
+  const [feedChatInput,setFeedChatInput]=useState("");
+  const [feedProfile,setFeedProfile]=useState(null);
+  const [feedChatLoading,setFeedChatLoading]=useState(false);
+  const [feedExpanded,setFeedExpanded]=useState(null);
+  const feedObserverRef=useRef(null);
+  const feedTimers=useRef({});
+  const observedFeedEls=useRef(new Set());
+
+  const allProducts=useMemo(()=>[
+    ...P.raquette.map(p=>({...p,cat:"raquette",catLabel:"RAQUETTE"})),
+    ...P.chaussure.map(p=>({...p,cat:"chaussure",catLabel:"CHAUSSURES"})),
+    ...P.accessoire.map(p=>({...p,cat:"accessoire",catLabel:"ACCESSOIRE"})),
+  ],[]);
+
+  /* Interleave categories for variety in default order */
+  const defaultFeedOrder=useMemo(()=>{
+    const bycat={};
+    allProducts.forEach(p=>{(bycat[p.cat]=bycat[p.cat]||[]).push(p);});
+    const cats=Object.keys(bycat);
+    const result=[];
+    const maxLen=Math.max(...cats.map(c=>bycat[c].length));
+    for(let i=0;i<maxLen;i++) cats.forEach(c=>{if(bycat[c][i]) result.push(bycat[c][i]);});
+    return result;
+  },[allProducts]);
+
+  /* Score and reorder based on accumulated interests + conversational profile */
+  const getFeedOrder=()=>{
+    if(feedInterests.length===0&&!feedProfile) return defaultFeedOrder;
+    return allProducts.map(p=>{
+      let aff=0;
+      feedInterests.forEach(int=>{
+        if(int.brand===p.brand) aff+=3;
+        if(int.cat===p.cat) aff+=1;
+        if(Math.abs(int.price-p.price)<40) aff+=2;
+        if(p.sc&&int.sc) aff+=p.sc.reduce((s,v,i)=>s+v*(int.sc[i]||0),0)/80;
+      });
+      if(feedProfile&&p.sc){
+        try{
+          const prof=buildProfile(feedProfile.level||"intermediaire",feedProfile.style||"polyvalent",feedProfile.position||"les-deux",feedProfile.freq||"regulier",feedProfile.injury||"aucune");
+          aff+=scoreProduct(p,prof,feedProfile.level||"intermediaire")*2;
+        }catch(e){}
+      }
+      return{...p,_affinity:aff};
+    }).sort((a,b)=>b._affinity-a._affinity);
+  };
+
+  /* Generate contextual nudge for a product based on browsing interests */
+  const generateFeedNudge=(product,interests)=>{
+    if(interests.length===0) return null;
+    const last=interests[interests.length-1];
+    if(last.id===product.id) return null;
+    if(last.brand===product.brand) return `Vous explorez ${product.brand}. ${product.name} ${product.cat===last.cat?"offre un profil différent":"complète votre setup"}.`;
+    if(last.cat===product.cat&&Math.abs(last.price-product.price)<50) return `Même gamme que le ${last.name} — ${product.price<last.price?"plus accessible":"profil plus technique"}.`;
+    if(product.sc&&last.sc){
+      const dot=product.sc.reduce((s,v,i)=>s+v*(last.sc[i]||0),0);
+      if(dot>350) return `Profil technique similaire au ${last.name}. Les joueurs qui aiment l'un choisissent souvent l'autre.`;
+    }
+    if(last.cat!==product.cat) return `Pour compléter — ${product.catLabel.toLowerCase()} adaptées à votre profil.`;
+    return null;
+  };
+
+  /* Setup IntersectionObserver for dwell tracking */
+  useEffect(()=>{
+    feedObserverRef.current=new IntersectionObserver((entries)=>{
+      entries.forEach(entry=>{
+        const id=entry.target.dataset.feedId;
+        if(!id) return;
+        if(entry.isIntersecting){
+          feedTimers.current[id]={...(feedTimers.current[id]||{total:0,triggered:false}),start:Date.now()};
+        }else if(feedTimers.current[id]?.start){
+          const elapsed=Date.now()-feedTimers.current[id].start;
+          feedTimers.current[id].total+=elapsed;
+          feedTimers.current[id].start=null;
+          if(feedTimers.current[id].total>=3000&&!feedTimers.current[id].triggered){
+            feedTimers.current[id].triggered=true;
+            const product=allProducts.find(p=>p.id===id);
+            if(product){
+              setFeedInterests(prev=>{
+                if(prev.find(x=>x.id===id)) return prev;
+                return[...prev,{id,brand:product.brand,price:product.price,cat:product.cat,name:product.name,sc:product.sc}];
+              });
+            }
+          }
+        }
+      });
+    },{threshold:0.4});
+    return()=>feedObserverRef.current?.disconnect();
+  },[allProducts]);
+
+  /* Callback ref to observe feed cards */
+  const feedCardRef=useCallback((el)=>{
+    if(el&&feedObserverRef.current&&!observedFeedEls.current.has(el)){
+      feedObserverRef.current.observe(el);
+      observedFeedEls.current.add(el);
+    }
+  },[]);
+
+  /* Update nudge map when interests change */
+  useEffect(()=>{
+    if(feedInterests.length===0) return;
+    const newNudges={};
+    allProducts.forEach(p=>{
+      const nudge=generateFeedNudge(p,feedInterests);
+      if(nudge) newNudges[p.id]=nudge;
+    });
+    setFeedNudgeMap(newNudges);
+  },[feedInterests,allProducts]);
+
+  /* Scroll to feed when profile is set via conversation */
+  useEffect(()=>{
+    if(feedProfile) document.getElementById("attentional-feed")?.scrollIntoView({behavior:"smooth"});
+  },[feedProfile]);
+
+  /* Handle conversational input in the feed */
+  const handleFeedChat=async()=>{
+    if(!feedChatInput.trim()) return;
+    const msg=feedChatInput.trim();
+    setFeedChatInput("");
+    setFeedChatLoading(true);
+    const profile=await sendToGemini(msg);
+    setFeedChatLoading(false);
+    if(profile) setFeedProfile(profile);
   };
 
   const sn={gender:1,level:2,style:3,position:4,frequency:5,injury:6}[ph]||0;
@@ -545,12 +695,12 @@ function App(){
       {/* HEADER */}
       <header style={{position:"fixed",top:0,left:0,right:0,zIndex:50,display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px clamp(16px,4vw,32px)",background:ph==="hero"?"transparent":"rgba(10,10,10,0.94)",backdropFilter:ph!=="hero"?"blur(16px)":"none",borderBottom:ph!=="hero"?"1px solid rgba(255,255,255,0.05)":"none",transition:"all 0.4s"}}>
         <div onClick={reset} style={{cursor:"pointer"}}><div style={{fontFamily:T.bf,fontSize:"clamp(14px,2.5vw,18px)",fontWeight:700,letterSpacing:"3px",color:T.acc2}}>ESPRIT PADEL</div><div style={{fontFamily:T.bf,fontSize:7,letterSpacing:"2.5px",color:T.grey,textTransform:"uppercase"}}>Shop — Configurateur IA</div></div>
-        {!["hero","an"].includes(ph)&&<button onClick={reset} style={{background:"none",border:"1px solid rgba(255,255,255,0.1)",padding:"5px 14px",color:T.grey,fontSize:9,fontFamily:T.bf,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer"}}>{ph==="catalogue"?"Accueil":"Recommencer"}</button>}
+        {!["hero","an"].includes(ph)&&<button onClick={reset} style={{background:"none",border:"1px solid rgba(255,255,255,0.1)",padding:"5px 14px",color:T.grey,fontSize:9,fontFamily:T.bf,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer"}}>Recommencer</button>}
       </header>
 
       {/* HERO */}
       {ph==="hero"&&<div style={{minHeight:"100vh",display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"0 clamp(16px,4vw,40px) 48px",position:"relative",background:"linear-gradient(135deg,#1a1200 0%,#0a0a0a 40%,#0a1520 100%)"}}>
-        <div style={{position:"absolute",inset:0,backgroundImage:"url(https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=1500&h=1000&fit=crop)",backgroundSize:"cover",backgroundPosition:"center 40%",filter:"brightness(0.25) contrast(1.1)"}}/>
+        <div style={{position:"absolute",inset:0,backgroundImage:"url(https://images.unsplash.com/photo-1646649853703-7645147474ba?w=1600&h=900&fit=crop)",backgroundSize:"cover",backgroundPosition:"center 40%",filter:"brightness(0.25) contrast(1.1)"}}/>
         <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(10,10,10,1) 0%,rgba(10,10,10,0.4) 50%,rgba(10,10,10,0.1) 100%)"}}/>
         <div style={{position:"relative",zIndex:2,animation:"fadeUp 0.8s ease 0.2s both",maxWidth:560}}>
           <div style={{fontFamily:T.bf,fontSize:"clamp(8px,1.5vw,10px)",letterSpacing:"5px",textTransform:"uppercase",color:T.acc2,marginBottom:14}}>Configurateur intelligent</div>
@@ -558,9 +708,85 @@ function App(){
           <p style={{fontFamily:T.bf,fontSize:"clamp(12px,1.8vw,14px)",fontWeight:300,color:T.grey,lineHeight:1.7,maxWidth:420,marginBottom:28}}>6 questions, 30 secondes. Notre moteur analyse votre profil — niveau, style, position, fréquence, sensibilités — et compose votre setup idéal parmi 600+ références.</p>
           <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
             <button onClick={()=>setPh("gender")} style={{background:T.acc2,color:T.black,border:"none",padding:"clamp(12px,2vw,16px) clamp(30px,5vw,48px)",fontFamily:T.bf,fontSize:"clamp(11px,1.5vw,13px)",fontWeight:600,letterSpacing:"3px",textTransform:"uppercase",cursor:"pointer",transition:"background 0.3s"}} onMouseEnter={e=>e.target.style.background=T.acc} onMouseLeave={e=>e.target.style.background=T.acc2}>Trouvez mon setup</button>
-            <button onClick={()=>setPh("catalogue")} style={{background:"transparent",color:T.white,border:"1px solid rgba(255,255,255,0.2)",padding:"clamp(12px,2vw,16px) clamp(24px,4vw,36px)",fontFamily:T.bf,fontSize:"clamp(10px,1.3vw,12px)",fontWeight:400,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer",transition:"all 0.3s"}} onMouseEnter={e=>{e.target.style.borderColor="rgba(232,168,56,0.5)";e.target.style.color=T.acc2;}} onMouseLeave={e=>{e.target.style.borderColor="rgba(255,255,255,0.2)";e.target.style.color=T.white;}}>Explorer le catalogue</button>
+            <button onClick={()=>document.getElementById("attentional-feed")?.scrollIntoView({behavior:"smooth"})} style={{background:"transparent",color:T.white,border:"1px solid rgba(255,255,255,0.2)",padding:"clamp(12px,2vw,16px) clamp(24px,4vw,36px)",fontFamily:T.bf,fontSize:"clamp(10px,1.3vw,12px)",fontWeight:400,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer",transition:"all 0.3s"}} onMouseEnter={e=>{e.target.style.borderColor="rgba(232,168,56,0.5)";e.target.style.color=T.acc2;}} onMouseLeave={e=>{e.target.style.borderColor="rgba(255,255,255,0.2)";e.target.style.color=T.white;}}>Explorer le catalogue</button>
           </div>
           <div style={{marginTop:32,display:"flex",gap:"clamp(16px,3vw,28px)",flexWrap:"wrap",animation:"fadeUp 0.8s ease 0.6s both"}}>{[{n:"600+",l:"Raquettes"},{n:"50+",l:"Marques"},{n:"#1",l:"France"},{n:"⭐",l:"Expert conseil"}].map((s,i)=><div key={i}><div style={{fontFamily:T.df,fontSize:"clamp(15px,2vw,18px)",fontWeight:600,color:T.acc2}}>{s.n}</div><div style={{fontFamily:T.bf,fontSize:8,letterSpacing:"1.5px",color:T.grey,textTransform:"uppercase",marginTop:2}}>{s.l}</div></div>)}</div>
+        </div>
+      </div>}
+
+      {/* ═══ ATTENTIONAL FEED — directly below hero ═══ */}
+      {ph==="hero"&&<div id="attentional-feed" style={{padding:"0 clamp(16px,4vw,32px) 120px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,margin:"0 0 20px",paddingTop:8}}>
+          <div style={{flex:1,height:1,background:"rgba(255,255,255,0.06)"}}/>
+          <span style={{fontFamily:T.bf,fontSize:9,letterSpacing:"3px",textTransform:"uppercase",color:T.grey}}>Explorez</span>
+          <div style={{flex:1,height:1,background:"rgba(255,255,255,0.06)"}}/>
+        </div>
+        <p style={{textAlign:"center",fontFamily:T.bf,fontSize:11,color:"rgba(255,255,255,0.3)",marginBottom:24,fontWeight:300}}>Scrollez. L'IA observe, apprend, s'adapte.</p>
+
+        {feedInterests.length>0&&<div style={{textAlign:"center",marginBottom:20,animation:"fadeIn 0.5s"}}>
+          <span style={{fontFamily:T.bf,fontSize:10,color:T.acc2,letterSpacing:"1px"}}>{feedInterests.length} centre{feedInterests.length>1?"s":""} d'intérêt détecté{feedInterests.length>1?"s":""}</span>
+          {feedProfile&&<span style={{fontFamily:T.bf,fontSize:10,color:T.grey,marginLeft:8}}>· Profil affiné par l'IA</span>}
+        </div>}
+
+        <div style={{display:"flex",flexDirection:"column",gap:3}}>
+          {getFeedOrder().map((p,i)=>{
+            const isInterested=feedInterests.find(x=>x.id===p.id);
+            const nudge=feedNudgeMap[p.id];
+            const highAffinity=p._affinity>5;
+            return <React.Fragment key={p.id}>
+              <div ref={feedCardRef} data-feed-id={p.id} style={{position:"relative",overflow:"hidden",animation:"fadeUp 0.4s ease "+(Math.min(i,6)*0.06)+"s both",...(isInterested?{animation:"dwellGlow 0.6s ease forwards"}:{})}}>
+                <div style={{position:"relative",aspectRatio:"3/4",overflow:"hidden",background:"#f0efeb",cursor:"pointer"}} onClick={()=>setFeedExpanded(feedExpanded===p.id?null:p.id)}>
+                  <img src={p.img} alt={p.name} loading="lazy" onError={e=>{e.target.style.display="none";}} style={{width:"100%",height:"100%",objectFit:"contain",padding:"8%",transition:"transform 0.6s"}} onMouseEnter={e=>e.target.style.transform="scale(1.03)"} onMouseLeave={e=>e.target.style.transform="scale(1)"}/>
+                  <div style={{position:"absolute",top:8,left:8,background:"rgba(10,10,10,0.82)",padding:"4px 10px"}}><span style={{fontFamily:T.bf,fontSize:8,fontWeight:600,letterSpacing:"1.5px",color:T.acc2}}>{p.catLabel}</span></div>
+                  {highAffinity&&<div style={{position:"absolute",top:8,right:8,background:"rgba(232,168,56,0.92)",padding:"4px 10px",animation:"fadeIn 0.4s"}}><span style={{fontFamily:T.bf,fontSize:8,fontWeight:700,color:"#0a0a0a"}}>Pour vous</span></div>}
+                  <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"60px 16px 16px",background:"linear-gradient(transparent,rgba(10,10,10,0.9))"}}>
+                    <div style={{fontFamily:T.bf,fontSize:9,color:T.acc2,marginBottom:4,letterSpacing:"1px"}}>{p.brand}</div>
+                    <div style={{fontFamily:T.df,fontSize:"clamp(20px,4vw,28px)",fontWeight:700,lineHeight:1.15,marginBottom:6}}>{p.name}</div>
+                    <div style={{display:"flex",alignItems:"baseline",gap:10}}>
+                      <span style={{fontFamily:T.bf,fontSize:"clamp(14px,2.5vw,18px)",fontWeight:600}}>{p.price} €</span>
+                      {p.forme&&<span style={{fontFamily:T.bf,fontSize:9,color:T.grey}}>{p.forme} · {p.poids}</span>}
+                    </div>
+                  </div>
+                  {isInterested&&<div style={{position:"absolute",bottom:0,left:0,right:0,height:2,background:T.acc2,animation:"fadeIn 0.5s"}}/>}
+                </div>
+
+                {/* Expanded detail panel */}
+                {feedExpanded===p.id&&<div style={{padding:"16px",background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.06)",animation:"fadeUp 0.2s"}}>
+                  {p.tech&&<div style={{padding:"8px 12px",marginBottom:10,background:"rgba(232,168,56,0.06)",borderLeft:"3px solid "+T.acc2}}>
+                    <div style={{fontFamily:T.bf,fontSize:7,letterSpacing:"2px",textTransform:"uppercase",color:T.acc2,marginBottom:3}}>Technologie</div>
+                    <p style={{fontFamily:T.bf,fontSize:11,color:T.light,lineHeight:1.5}}>{p.tech}</p>
+                  </div>}
+                  {p.why&&<p style={{fontFamily:T.bf,fontSize:11,color:T.grey,lineHeight:1.5,marginBottom:10}}>{p.why}</p>}
+                  {p.forme&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"1px",marginBottom:10,background:"rgba(255,255,255,0.03)"}}>
+                    {[["Forme",p.forme],["Poids",p.poids],["Mousse",p.mousse],["Surface",p.surface],["Balance",p.balance],["Texture",p.texture]].filter(([,v])=>v).map(([k,v])=><div key={k} style={{padding:"6px 8px",background:T.black}}><div style={{fontFamily:T.bf,fontSize:7,letterSpacing:"1px",textTransform:"uppercase",color:T.grey,marginBottom:1}}>{k}</div><div style={{fontFamily:T.bf,fontSize:10,color:T.white}}>{v}</div></div>)}
+                  </div>}
+                  <a href={p.url||"#"} target="_blank" rel="noopener noreferrer" style={{display:"block",padding:"12px",background:T.acc2,color:T.black,fontFamily:T.bf,fontSize:10,fontWeight:600,letterSpacing:"1.5px",textTransform:"uppercase",textAlign:"center",textDecoration:"none",transition:"background 0.3s"}} onMouseEnter={e=>e.target.style.background=T.acc} onMouseLeave={e=>e.target.style.background=T.acc2}>Voir sur le site — {p.price}€</a>
+                </div>}
+              </div>
+
+              {/* AI nudge — appears when interest pattern detected */}
+              {nudge&&!feedExpanded&&<div style={{padding:"12px 16px",background:"rgba(232,168,56,0.04)",borderLeft:"2px solid "+T.acc2,animation:"feedReveal 0.4s ease both",overflow:"hidden"}}>
+                <p style={{fontFamily:T.bf,fontSize:11,color:T.light,lineHeight:1.5,fontWeight:300}}>{nudge}</p>
+              </div>}
+            </React.Fragment>;
+          })}
+        </div>
+
+        <div style={{textAlign:"center",marginTop:32}}>
+          <button onClick={()=>setPh("gender")} style={{padding:"14px 36px",background:T.acc2,color:T.black,border:"none",fontFamily:T.bf,fontSize:11,fontWeight:600,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer",transition:"background 0.3s"}} onMouseEnter={e=>e.target.style.background=T.acc} onMouseLeave={e=>e.target.style.background=T.acc2}>Ou configurez votre setup en 30s</button>
+        </div>
+      </div>}
+
+      {/* FLOATING FEED INPUT */}
+      {ph==="hero"&&<div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:50,background:"rgba(10,10,10,0.92)",backdropFilter:"blur(16px)",borderTop:"1px solid rgba(255,255,255,0.06)",padding:"8px clamp(16px,4vw,32px) 12px"}}>
+        <div style={{maxWidth:900,margin:"0 auto"}}>
+          <div style={{fontFamily:T.bf,fontSize:7,letterSpacing:"2px",textTransform:"uppercase",color:T.grey,marginBottom:5,textAlign:"center"}}>
+            {feedChatLoading?"Analyse en cours...":feedInterests.length>0?`${feedInterests.length} intérêt${feedInterests.length>1?"s":""} détecté${feedInterests.length>1?"s":""} · L'IA adapte le catalogue`:"L'IA adapte le catalogue en temps réel"}
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <input value={feedChatInput} onChange={e=>setFeedChatInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&feedChatInput.trim())handleFeedChat();}} placeholder="Décrivez ce que vous cherchez : raquette légère pour débutant, chaussures pour terrain dur..." style={{flex:1,padding:"10px 14px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",color:T.white,fontFamily:T.bf,fontSize:12,outline:"none",transition:"border 0.3s"}} onFocus={e=>e.target.style.borderColor="rgba(232,168,56,0.3)"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.08)"}/>
+            <button onClick={handleFeedChat} disabled={feedChatLoading||!feedChatInput.trim()} style={{padding:"10px 16px",background:feedChatInput.trim()?T.acc2:"rgba(255,255,255,0.05)",color:feedChatInput.trim()?T.black:T.grey,border:"none",fontFamily:T.bf,fontSize:11,fontWeight:600,cursor:feedChatInput.trim()?"pointer":"default",transition:"all 0.3s"}}>→</button>
+          </div>
         </div>
       </div>}
 
@@ -641,58 +867,29 @@ function App(){
         ].map((st,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,animation:"fadeUp 0.4s ease "+(0.3+i*0.25)+"s both"}}><div style={{width:4,height:4,borderRadius:"50%",background:T.acc2,animation:"pulse 1.2s ease "+(i*0.2)+"s infinite"}}/><span style={{fontFamily:T.bf,fontSize:11,color:T.grey,fontWeight:300}}>{st}</span></div>)}
       </div>}
 
-      {/* CATALOGUE */}
-      {ph==="catalogue"&&<div style={{minHeight:"100vh",padding:"80px clamp(16px,4vw,32px) 24px",animation:"fadeIn 0.5s"}}>
-        <div style={{marginBottom:24}}>
-          <div style={{fontFamily:T.bf,fontSize:"clamp(8px,1.3vw,10px)",letterSpacing:"4px",textTransform:"uppercase",color:T.acc2,marginBottom:8}}>Catalogue complet</div>
-          <h2 style={{fontFamily:T.df,fontSize:"clamp(22px,4.5vw,34px)",fontWeight:300,lineHeight:1.15,marginBottom:16}}>Explorez <span style={{fontWeight:700}}>600+ références</span></h2>
-          <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
-            {[["raquette","Raquettes"],["chaussure","Chaussures"],["accessoire","Accessoires"]].map(([k,l])=><button key={k} onClick={()=>setCatFilter(k)} style={{padding:"8px 18px",background:catFilter===k?"rgba(232,168,56,0.15)":"rgba(255,255,255,0.03)",border:catFilter===k?"1px solid rgba(232,168,56,0.4)":"1px solid rgba(255,255,255,0.06)",color:catFilter===k?T.acc2:T.grey,fontFamily:T.bf,fontSize:10,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer",transition:"all 0.2s"}}>{l}</button>)}
-          </div>
-          <div style={{display:"flex",gap:6,marginBottom:20}}>
-            {[["score","Par pertinence"],["price-asc","Prix ↑"],["price-desc","Prix ↓"]].map(([k,l])=><button key={k} onClick={()=>setCatSort(k)} style={{padding:"5px 12px",background:"transparent",border:"none",color:catSort===k?T.acc2:T.grey,fontFamily:T.bf,fontSize:9,letterSpacing:"1px",cursor:"pointer",borderBottom:catSort===k?"1px solid "+T.acc2:"1px solid transparent"}}>{l}</button>)}
-          </div>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(clamp(140px,30vw,180px),1fr))",gap:"clamp(6px,1.5vw,12px)"}}>
-          {(()=>{
-            const defaultProfile=buildProfile("intermediaire","polyvalent","les-deux","regulier","aucune");
-            let items=P[catFilter].map(p=>({...p,_score:scoreProduct(p,defaultProfile,"intermediaire"),_matchPct:Math.round(Math.min(100,scoreProduct(p,defaultProfile,"intermediaire")*1.2))}));
-            if(catSort==="score") items.sort((a,b)=>b._score-a._score);
-            else if(catSort==="price-asc") items.sort((a,b)=>a.price-b.price);
-            else items.sort((a,b)=>b.price-a.price);
-            return items.map((p,i)=>{
-              const sp=socialProof(p.id);
-              const proMsg=p.level?{debutant:"Idéal pour progresser",intermediaire:"Pour monter en niveau",avance:"Performance avancée",expert:"Compétition"}[p.level]:(p.type||"Essentiel");
-              return <div key={p.id} style={{animation:"fadeUp 0.3s ease "+(i*0.04)+"s both",cursor:"pointer"}} onClick={()=>window.open(p.url,"_blank")}>
-                <div style={{position:"relative",aspectRatio:"1",overflow:"hidden",background:"#f0efeb"}}>
-                  <img src={p.img} alt={p.name} loading="lazy" onError={e=>{e.target.style.display="none";}} style={{width:"100%",height:"100%",objectFit:"contain",padding:"8%",transition:"transform 0.4s"}} onMouseEnter={e=>e.target.style.transform="scale(1.05)"} onMouseLeave={e=>e.target.style.transform="scale(1)"}/>
-                  <div style={{position:"absolute",top:4,left:4,background:"rgba(10,10,10,0.82)",padding:"2px 6px"}}><span style={{fontFamily:T.bf,fontSize:7,fontWeight:600,color:T.acc2}}>{proMsg}</span></div>
-                  <div style={{position:"absolute",bottom:4,right:4,background:"rgba(10,10,10,0.75)",padding:"2px 6px"}}><span style={{fontFamily:T.bf,fontSize:8,color:T.acc2}}>{sp.pct}%</span><span style={{fontFamily:T.bf,fontSize:7,color:T.grey,marginLeft:3}}>choisi</span></div>
-                </div>
-                <div style={{padding:"6px 2px 14px"}}>
-                  <div style={{fontFamily:T.bf,fontSize:8,color:T.grey}}>{p.brand}</div>
-                  <div style={{fontFamily:T.df,fontSize:"clamp(13px,2vw,16px)",fontWeight:700,lineHeight:1.15}}>{p.name}</div>
-                  <div style={{fontFamily:T.bf,fontSize:"clamp(11px,1.5vw,13px)",fontWeight:600,color:T.acc,marginTop:3}}>{p.price} €</div>
-                  {p.forme&&<div style={{fontFamily:T.bf,fontSize:8,color:"rgba(255,255,255,0.3)",marginTop:2}}>{p.forme} · {p.poids}</div>}
-                </div>
-              </div>;
-            });
-          })()}
-        </div>
-        <div style={{textAlign:"center",marginTop:24}}>
-          <button onClick={()=>setPh("gender")} style={{padding:"14px 36px",background:T.acc2,color:T.black,border:"none",fontFamily:T.bf,fontSize:11,fontWeight:600,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer"}}>Trouvez votre setup personnalisé</button>
-        </div>
-      </div>}
-
       {/* RESULTS */}
       {ph==="res"&&res&&<div onClick={tch} style={{minHeight:"100vh",padding:"80px 0 24px",animation:"fadeIn 0.5s"}}>
 
-        {/* Profile summary — compact */}
-        <div style={{margin:"0 clamp(16px,4vw,32px) 12px",padding:"8px 14px",background:"rgba(232,168,56,0.05)",border:"1px solid rgba(232,168,56,0.1)",animation:"slideDown 0.4s"}}>
-          <span style={{fontFamily:T.bf,fontSize:11,color:T.light}}>
-            {LEVELS.find(l=>l.id===level)?.label} · {STYLES.find(s=>s.id===style)?.label} · {POSITIONS.find(p=>p.id===position)?.label} · {FREQS.find(f=>f.id===freq)?.label}
-            {injury!=="aucune"&&<span style={{color:"#e88"}}> · {INJURIES.find(i=>i.id===injury)?.label}</span>}
-          </span>
+        {/* ═══ CONVERSATIONAL REFINEMENT — en haut, c'est le coeur LLM ═══ */}
+        <div style={{margin:"0 clamp(16px,4vw,32px) 16px",padding:"14px 16px",background:"rgba(232,168,56,0.04)",border:"1px solid rgba(232,168,56,0.1)",animation:"slideDown 0.4s"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:chatMsgs.length>0?10:8}}>
+            <span style={{fontFamily:T.bf,fontSize:11,color:T.light}}>
+              {LEVELS.find(l=>l.id===level)?.label} · {STYLES.find(s=>s.id===style)?.label} · {POSITIONS.find(p=>p.id===position)?.label} · {FREQS.find(f=>f.id===freq)?.label}
+              {injury!=="aucune"&&<span style={{color:"#e88"}}> · {INJURIES.find(i=>i.id===injury)?.label}</span>}
+            </span>
+          </div>
+          {chatMsgs.length>0&&<div style={{maxHeight:150,overflowY:"auto",marginBottom:8}}>
+            {chatMsgs.slice(-4).map((m,i)=><div key={i} style={{marginBottom:6,display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",animation:"fadeUp 0.2s"}}>
+              <div style={{maxWidth:"80%",padding:"6px 10px",background:m.role==="user"?"rgba(232,168,56,0.1)":"rgba(255,255,255,0.03)",border:m.role==="user"?"1px solid rgba(232,168,56,0.15)":"1px solid rgba(255,255,255,0.05)",borderRadius:m.role==="user"?"8px 8px 2px 8px":"8px 8px 8px 2px"}}>
+                <p style={{fontFamily:T.bf,fontSize:11,color:m.role==="user"?T.light:T.acc2,lineHeight:1.4}}>{m.text}</p>
+              </div>
+            </div>)}
+          </div>}
+          {chatLoading&&<div style={{display:"flex",gap:4,padding:"4px 0"}}>{[0,1,2].map(i=><div key={i} style={{width:4,height:4,borderRadius:"50%",background:T.acc2,animation:"pulse 1s ease "+(i*0.2)+"s infinite"}}/>)}</div>}
+          <div style={{display:"flex",gap:6}}>
+            <input value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&chatInput.trim())handleRefine();}} placeholder="Affinez : plus léger, moins cher, j'ai aussi mal au genou..." style={{flex:1,padding:"9px 12px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",color:T.white,fontFamily:T.bf,fontSize:11,outline:"none",transition:"border 0.3s"}} onFocus={e=>e.target.style.borderColor="rgba(232,168,56,0.3)"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.06)"}/>
+            <button onClick={handleRefine} disabled={chatLoading||!chatInput.trim()} style={{padding:"9px 14px",background:chatInput.trim()?T.acc2:"rgba(255,255,255,0.05)",color:chatInput.trim()?T.black:T.grey,border:"none",fontFamily:T.bf,fontSize:10,fontWeight:600,cursor:chatInput.trim()?"pointer":"default",transition:"all 0.3s"}}>→</button>
+          </div>
         </div>
 
         <div style={{padding:"0 clamp(16px,4vw,32px)",marginBottom:16}}>
@@ -814,7 +1011,7 @@ function App(){
                "⚖️ L'équilibre parfait change avec votre progression. Votre setup d'aujourd'hui est idéal — mais dans 6 mois, votre jeu aura évolué. Revenez nous voir."}
             </p>
           </div>
-          <button onClick={()=>setPh("catalogue")} style={{width:"100%",padding:"10px",background:"transparent",border:"1px solid rgba(232,168,56,0.25)",color:T.acc2,fontFamily:T.bf,fontSize:9,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer",transition:"all 0.3s"}} onMouseEnter={e=>{e.target.style.background="rgba(232,168,56,0.1)";}} onMouseLeave={e=>{e.target.style.background="transparent";}}>Découvrir les nouveautés du catalogue</button>
+          <button onClick={()=>{setPh("hero");setTimeout(()=>document.getElementById("attentional-feed")?.scrollIntoView({behavior:"smooth"}),100);}} style={{width:"100%",padding:"10px",background:"transparent",border:"1px solid rgba(232,168,56,0.25)",color:T.acc2,fontFamily:T.bf,fontSize:9,letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer",transition:"all 0.3s"}} onMouseEnter={e=>{e.target.style.background="rgba(232,168,56,0.1)";}} onMouseLeave={e=>{e.target.style.background="transparent";}}>Explorer le catalogue intelligent</button>
         </div>
 
         <div style={{padding:"20px clamp(16px,4vw,32px) 12px"}}>

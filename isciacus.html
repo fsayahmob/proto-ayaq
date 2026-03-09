@@ -194,9 +194,11 @@ font-weight:500;cursor:pointer;text-align:center;transition:background .2s,color
 .sheet-btn-secondary{background:transparent;color:var(--accent);border:1px solid var(--accent)}
 .sheet-btn-primary:hover{opacity:.9}
 .sheet-btn-secondary:hover{background:var(--accent-soft)}
-.longpress-hint{position:absolute;bottom:3px;right:3px;width:16px;height:16px;
-border-radius:50%;background:rgba(201,169,110,.2);display:flex;align-items:center;
-justify-content:center;font-size:8px;color:var(--accent);pointer-events:none;opacity:.6}
+.slot-swap-btn{position:absolute;bottom:4px;right:4px;width:22px;height:22px;
+border-radius:50%;background:rgba(10,10,10,.7);border:1px solid rgba(201,169,110,.4);
+display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--accent);
+cursor:pointer;opacity:.7;transition:opacity .2s,background .2s;z-index:2;padding:0;line-height:1}
+.slot-swap-btn:hover,.slot-swap-btn:active{opacity:1;background:rgba(10,10,10,.9)}
 
 .context-input-bar{position:absolute;bottom:0;left:0;right:0;
 background:linear-gradient(to top,var(--bg) 80%,transparent);padding:12px 16px 16px;
@@ -767,39 +769,17 @@ function LoadingScreen() {
   );
 }
 
-function ProductSlot({ product, slotKey, isActive, onTap, onLongPress }) {
+function ProductSlot({ product, slotKey, isActive, onTap, onSwap }) {
   if (!product) return null;
   const slotLabels = { HAUT:'Haut', VESTE:'Veste', BAS:'Bas', CHAUSSURES:'Chaussures', ACCESSOIRE:'Accessoire' };
-  const timerRef = useRef(null);
-  const longPressedRef = useRef(false);
-
-  const startPress = useCallback((e) => {
-    longPressedRef.current = false;
-    timerRef.current = setTimeout(() => {
-      longPressedRef.current = true;
-      onLongPress(product, slotKey);
-    }, 500);
-  }, [product, slotKey, onLongPress]);
-
-  const endPress = useCallback((e) => {
-    clearTimeout(timerRef.current);
-    if (!longPressedRef.current) {
-      onTap(slotKey);
-    }
-  }, [slotKey, onTap]);
-
-  const cancelPress = useCallback(() => {
-    clearTimeout(timerRef.current);
-  }, []);
 
   return (
     <div className={`product-slot ${isActive ? 'active' : ''}`}
-         onTouchStart={startPress} onTouchEnd={endPress} onTouchCancel={cancelPress}
-         onMouseDown={startPress} onMouseUp={endPress} onMouseLeave={cancelPress}
-         onClick={(e) => e.stopPropagation()}>
+         onClick={(e) => { e.stopPropagation(); onTap(product, slotKey); }}>
       <div className="product-img-wrap">
         {getImage(product) && <img src={getImage(product)} alt={product.title} loading="lazy" draggable="false" />}
-        <div className="longpress-hint">i</div>
+        <button className="slot-swap-btn" onClick={(e) => { e.stopPropagation(); onSwap(slotKey); }}
+          title="Changer ce produit">↻</button>
       </div>
       <div className="product-slot-label">{slotLabels[slotKey]}</div>
       <div className="product-slot-brand">{product.vendor}</div>
@@ -1119,14 +1099,15 @@ function App() {
   const onMouseMove = useCallback(e => { if (dragRef.current.dragging) handleDragMove(e.clientX); }, [handleDragMove]);
   const onMouseUp = useCallback(e => handleDragEnd(e.clientX), [handleDragEnd]);
 
-  // Long press → product detail sheet
-  const handleLongPress = useCallback((product, slot) => {
-    setSheetProduct(product);
-  }, []);
-
-  // Slot tap
-  const handleSlotTap = useCallback((slot) => {
+  // Tap → product detail sheet
+  const handleSlotDetail = useCallback((product, slot) => {
     if (isAnimating || Math.abs(swipeOffset) > 5) return;
+    setSheetProduct(product);
+  }, [isAnimating, swipeOffset]);
+
+  // Swap button → show alternatives
+  const handleSlotSwap = useCallback((slot) => {
+    if (isAnimating) return;
     if (activeSlot === slot) {
       setActiveSlot(null);
       setAlternatives(null);
@@ -1262,14 +1243,14 @@ function App() {
               {slotOrder.map(slot => (
                 <ProductSlot key={slot} product={currentBundle.items[slot.toLowerCase()]}
                   slotKey={slot} isActive={activeSlot === slot}
-                  onTap={handleSlotTap} onLongPress={handleLongPress} />
+                  onTap={handleSlotDetail} onSwap={handleSlotSwap} />
               ))}
             </div>
             <div className="products-grid">
               {row2.map(slot => (
                 <ProductSlot key={slot} product={currentBundle.items[slot.toLowerCase()]}
                   slotKey={slot} isActive={activeSlot === slot}
-                  onTap={handleSlotTap} onLongPress={handleLongPress} />
+                  onTap={handleSlotDetail} onSwap={handleSlotSwap} />
               ))}
             </div>
 

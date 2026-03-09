@@ -760,7 +760,7 @@ function App(){
           {feedProfile&&<span style={{fontFamily:T.bf,fontSize:10,color:T.grey,marginLeft:8}}>· Profil affiné par l'IA</span>}
         </div>}
 
-        <div style={{display:"flex",flexDirection:"column",gap:3}}>
+        <div style={{display:"flex",flexDirection:"column",gap:20}}>
           {getFeedOrder().map((p,i)=>{
             const isInterested=feedInterests.find(x=>x.id===p.id);
             const nudge=feedNudgeMap[p.id];

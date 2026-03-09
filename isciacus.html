@@ -205,22 +205,19 @@ color:var(--text);transition:border-color .15s}
 font-size:.7rem;color:var(--text-secondary);transition:color .15s}
 .detail-card-swap:hover{color:var(--accent)}
 
-.context-input-bar{position:absolute;bottom:0;left:0;right:0;
-background:linear-gradient(to top,var(--bg) 80%,transparent);padding:12px 16px 16px;
-z-index:15;animation:slideUp .3s ease forwards}
+.context-input-bar{flex-shrink:0;padding:6px 12px;background:var(--bg);
+border-top:1px solid var(--border);z-index:10}
 .context-input-wrap{display:flex;gap:8px;align-items:center}
 .context-input{flex:1;background:var(--bg-card);border:1px solid var(--border);
-border-radius:10px;padding:12px 14px;font-family:var(--font-sans);font-size:.85rem;
+border-radius:20px;padding:10px 16px;font-family:var(--font-sans);font-size:.8rem;
 color:var(--text);outline:none;transition:border-color .2s}
 .context-input:focus{border-color:var(--accent)}
-.context-input::placeholder{color:var(--text-secondary);font-style:italic;font-size:.8rem}
-.context-send{width:40px;height:40px;border-radius:50%;background:var(--accent);
-border:none;color:var(--bg);font-size:1rem;cursor:pointer;flex-shrink:0;
-display:flex;align-items:center;justify-content:center}
-.context-dismiss{text-align:center;margin-top:6px;font-size:.6rem;color:var(--text-secondary);
-cursor:pointer;opacity:.6}
+.context-input::placeholder{color:var(--text-secondary);font-style:italic;font-size:.75rem}
+.context-send{width:36px;height:36px;border-radius:50%;background:var(--accent);
+border:none;color:var(--bg);font-size:.9rem;cursor:pointer;flex-shrink:0;
+display:flex;align-items:center;justify-content:center;transition:opacity .2s}
 .context-send:disabled{opacity:.3;cursor:default}
-.context-loading{text-align:center;padding:8px 0}
+.context-loading{display:flex;align-items:center;gap:10px;justify-content:center;padding:4px 0}
 .context-loading-text{font-family:var(--font-serif);font-size:.9rem;color:var(--accent);
 margin-bottom:10px;font-style:italic}
 .context-loading .loading-bar{width:80px;margin:0 auto}
@@ -528,6 +525,223 @@ function weightedPick(arr, brandPrefs, avoidIds) {
   return weighted[weighted.length - 1].p;
 }
 
+// ─── Thompson Sampling Preference Engine ─────────────────────────────
+// Multi-axis Bayesian preference learning from swipe behavior.
+// Each axis tracks a Beta(α, β) distribution per value.
+// Right swipe → α += credit, Left swipe → β += credit.
+// Thompson Sampling: sample from Beta distributions to balance exploration/exploitation.
+
+const PREFERENCE_AXES = {
+  style:      ['workwear','minimal','street','elevated','gorpcore','heritage','french-casual'],
+  color:      ['NOIR','BLANC','MARINE','VERT','TERRE','ROUGE','GRIS'],
+  silhouette: ['relaxed','regular','structured'],
+  formality:  ['decontracte','smart-casual'],
+  priceRange: ['budget','mid','premium'], // <100€, 100-200€, >200€
+};
+
+// Prior: Beta(1,1) = uniform. Higher α = more liked, higher β = more disliked.
+function initPreferences() {
+  const prefs = {};
+  for (const [axis, values] of Object.entries(PREFERENCE_AXES)) {
+    prefs[axis] = {};
+    for (const v of values) {
+      prefs[axis][v] = { alpha: 1, beta: 1 };
+    }
+  }
+  return prefs;
+}
+
+// Approximate Beta distribution sampling using Johnk's algorithm
+function sampleBeta(alpha, beta) {
+  // For small alpha/beta, use the inverse CDF approximation
+  function gammaRand(shape) {
+    if (shape < 1) {
+      return gammaRand(shape + 1) * Math.pow(Math.random(), 1 / shape);
+    }
+    const d = shape - 1/3;
+    const c = 1 / Math.sqrt(9 * d);
+    while (true) {
+      let x, v;
+      do {
+        x = gaussRand();
+        v = Math.pow(1 + c * x, 3);
+      } while (v <= 0);
+      const u = Math.random();
+      if (u < 1 - 0.0331 * x * x * x * x) return d * v;
+      if (Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) return d * v;
+    }
+  }
+  function gaussRand() {
+    let u, v, s;
+    do { u = Math.random() * 2 - 1; v = Math.random() * 2 - 1; s = u*u + v*v; } while (s >= 1 || s === 0);
+    return u * Math.sqrt(-2 * Math.log(s) / s);
+  }
+  const x = gammaRand(alpha);
+  const y = gammaRand(beta);
+  return x / (x + y);
+}
+
+// Extract axes from a bundle's items
+function extractBundleAxes(bundle) {
+  const items = Object.values(bundle.items).filter(Boolean);
+  const axes = { style: [], color: [], silhouette: [], formality: [], priceRange: [] };
+
+  for (const item of items) {
+    // Color from _colorFamily
+    const color = item._colorFamily || 'NOIR';
+    if (!axes.color.includes(color)) axes.color.push(color);
+
+    // Price range
+    const price = parseFloat(item.priceRange?.minVariantPrice?.amount || '0');
+    const range = price < 100 ? 'budget' : price > 200 ? 'premium' : 'mid';
+    if (!axes.priceRange.includes(range)) axes.priceRange.push(range);
+
+    // Style, silhouette, formality from vendor (brand DNA)
+    const vendor = item.vendor?.toUpperCase();
+    const brandMeta = BRAND_STYLE_MAP[vendor];
+    if (brandMeta) {
+      for (const s of brandMeta.styles) { if (!axes.style.includes(s)) axes.style.push(s); }
+      if (!axes.silhouette.includes(brandMeta.silhouette)) axes.silhouette.push(brandMeta.silhouette);
+      if (!axes.formality.includes(brandMeta.formality)) axes.formality.push(brandMeta.formality);
+    }
+  }
+
+  return axes;
+}
+
+// Brand → style/silhouette/formality mapping (client-side version of generate-bundles.mjs)
+const BRAND_STYLE_MAP = {
+  'CARHARTT W.I.P': { styles: ['workwear','street'], silhouette: 'relaxed', formality: 'decontracte' },
+  'CARHARTT WIP': { styles: ['workwear','street'], silhouette: 'relaxed', formality: 'decontracte' },
+  'UNIVERSAL WORKS': { styles: ['workwear','elevated'], silhouette: 'relaxed', formality: 'smart-casual' },
+  'PORTUGUESE FLANNEL': { styles: ['elevated','heritage'], silhouette: 'regular', formality: 'smart-casual' },
+  'SERVICE WORKS': { styles: ['workwear','street'], silhouette: 'relaxed', formality: 'decontracte' },
+  'LES DEUX': { styles: ['minimal','elevated'], silhouette: 'regular', formality: 'smart-casual' },
+  'NORDA': { styles: ['gorpcore'], silhouette: 'regular', formality: 'decontracte' },
+  'OLOW': { styles: ['french-casual','street'], silhouette: 'regular', formality: 'decontracte' },
+  'HOMECORE': { styles: ['french-casual','street'], silhouette: 'relaxed', formality: 'decontracte' },
+  'NUDIE JEANS': { styles: ['heritage'], silhouette: 'regular', formality: 'decontracte' },
+  'NUDIE JEANS CO': { styles: ['heritage'], silhouette: 'regular', formality: 'decontracte' },
+  'KARHU': { styles: ['gorpcore','heritage'], silhouette: 'regular', formality: 'decontracte' },
+  'BISOUS SKATEBOARDS': { styles: ['street'], silhouette: 'relaxed', formality: 'decontracte' },
+  'JAGVI': { styles: ['minimal','elevated'], silhouette: 'structured', formality: 'smart-casual' },
+  'JAGVI RIVE GAUCHE': { styles: ['minimal','elevated'], silhouette: 'structured', formality: 'smart-casual' },
+  'OUTLAND': { styles: ['heritage'], silhouette: 'regular', formality: 'decontracte' },
+  'RECEPTION': { styles: ['street','french-casual'], silhouette: 'relaxed', formality: 'decontracte' },
+  'NEW BALANCE': { styles: ['street','heritage'], silhouette: 'regular', formality: 'decontracte' },
+  'RAINS': { styles: ['minimal','gorpcore'], silhouette: 'regular', formality: 'decontracte' },
+  'VEJA': { styles: ['minimal','french-casual'], silhouette: 'regular', formality: 'smart-casual' },
+  'SAMSOE SAMSOE': { styles: ['minimal'], silhouette: 'regular', formality: 'smart-casual' },
+  'NITTO': { styles: ['minimal','french-casual'], silhouette: 'regular', formality: 'smart-casual' },
+  'GRAMICCI': { styles: ['gorpcore','street'], silhouette: 'relaxed', formality: 'decontracte' },
+  'HOUDINI': { styles: ['gorpcore'], silhouette: 'regular', formality: 'decontracte' },
+  'NIKE': { styles: ['street'], silhouette: 'regular', formality: 'decontracte' },
+  'AYAQ': { styles: ['gorpcore'], silhouette: 'regular', formality: 'decontracte' },
+  'H2O': { styles: ['minimal','french-casual'], silhouette: 'regular', formality: 'decontracte' },
+  'THE MERCER BRAND': { styles: ['minimal','elevated'], silhouette: 'regular', formality: 'smart-casual' },
+};
+
+// Update preferences after a swipe
+function updatePreferences(prefs, bundleAxes, direction) {
+  const credit = 1.0; // Could be weighted by engagement depth
+  for (const [axis, values] of Object.entries(bundleAxes)) {
+    if (!prefs[axis]) continue;
+    for (const v of values) {
+      if (!prefs[axis][v]) continue;
+      if (direction === 'right') {
+        prefs[axis][v].alpha += credit;
+      } else {
+        prefs[axis][v].beta += credit;
+      }
+    }
+  }
+  return prefs;
+}
+
+// Score a product based on current preference distributions (Thompson Sampling)
+function thompsonScore(product, prefs) {
+  let score = 0;
+  let axes = 0;
+
+  // Color
+  const color = product._colorFamily || 'NOIR';
+  if (prefs.color[color]) {
+    score += sampleBeta(prefs.color[color].alpha, prefs.color[color].beta);
+    axes++;
+  }
+
+  // Price range
+  const price = parseFloat(product.priceRange?.minVariantPrice?.amount || '0');
+  const range = price < 100 ? 'budget' : price > 200 ? 'premium' : 'mid';
+  if (prefs.priceRange[range]) {
+    score += sampleBeta(prefs.priceRange[range].alpha, prefs.priceRange[range].beta);
+    axes++;
+  }
+
+  // Style + silhouette + formality from brand
+  const vendor = product.vendor?.toUpperCase();
+  const brandMeta = BRAND_STYLE_MAP[vendor];
+  if (brandMeta) {
+    for (const s of brandMeta.styles) {
+      if (prefs.style[s]) {
+        score += sampleBeta(prefs.style[s].alpha, prefs.style[s].beta);
+        axes++;
+      }
+    }
+    if (prefs.silhouette[brandMeta.silhouette]) {
+      score += sampleBeta(prefs.silhouette[brandMeta.silhouette].alpha, prefs.silhouette[brandMeta.silhouette].beta);
+      axes++;
+    }
+    if (prefs.formality[brandMeta.formality]) {
+      score += sampleBeta(prefs.formality[brandMeta.formality].alpha, prefs.formality[brandMeta.formality].beta);
+      axes++;
+    }
+  }
+
+  return axes > 0 ? score / axes : 0.5; // Normalize to [0,1]
+}
+
+// Pick from pool using Thompson Sampling scores + color coherence
+function thompsonPick(pool, existingItems, prefs, avoidIds) {
+  if (!pool || pool.length === 0) return null;
+  const candidates = pool.filter(p => !avoidIds.has(p.handle));
+  if (candidates.length === 0) return pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : null;
+
+  const existingColors = Object.values(existingItems).filter(Boolean).map(p => p._colorFamily || 'NOIR');
+
+  const scored = candidates.map(p => {
+    // Thompson preference score (exploration + exploitation)
+    let score = thompsonScore(p, prefs) * 6;
+
+    // Color coherence bonus
+    const pColor = p._colorFamily || 'NOIR';
+    if (existingColors.length === 0) {
+      score += 2; // First item, no penalty
+    } else if (UNIVERSAL_FAMILIES.has(pColor)) {
+      score += 3; // Universals always safe
+    } else if (existingColors.includes(pColor)) {
+      score += 3; // Same color family = harmonious
+    } else {
+      // Check palette compatibility
+      const allColors = [...existingColors, pColor];
+      const nonU = allColors.filter(c => !UNIVERSAL_FAMILIES.has(c));
+      const inPalette = COLOR_PALETTES.some(pal => nonU.every(c => pal.includes(c)));
+      score += inPalette ? 2.5 : 0.5;
+    }
+
+    return { p, score: Math.max(0.1, score) };
+  });
+
+  // Weighted random pick
+  const total = scored.reduce((s, x) => s + x.score, 0);
+  let r = Math.random() * total;
+  for (const { p, score } of scored) {
+    r -= score;
+    if (r <= 0) return p;
+  }
+  return scored[scored.length - 1].p;
+}
+
 function composeBundle(catalog, weather, signals, previousBundle, direction) {
   const temp = weather.temp;
   const wCat = weatherCategory(weather.code);
@@ -546,6 +760,7 @@ function composeBundle(catalog, weather, signals, previousBundle, direction) {
 
   const brandPrefs = signals.preferredBrands || {};
   const typePrefs = signals.preferredTypes || {};
+  const prefs = signals.preferences || initPreferences();
 
   // Filter pools by weather/season
   let hautPool = [...catalog.HAUT];
@@ -591,30 +806,29 @@ function composeBundle(catalog, weather, signals, previousBundle, direction) {
     }
   }
 
-  // Pick items with color coherence — build progressively
+  // Pick items using Thompson Sampling + color coherence
   const picked = {};
-  // Start with a hero piece (random slot) to set the color tone
-  const haut = pickColorCoherent(hautPool, picked, brandPrefs, avoidIds);
+  const haut = thompsonPick(hautPool, picked, prefs, avoidIds);
   if (haut) picked.haut = haut;
 
-  const bas = pickColorCoherent(basPool, picked, brandPrefs, avoidIds);
+  const bas = thompsonPick(basPool, picked, prefs, avoidIds);
   if (bas) picked.bas = bas;
 
-  const chaussures = pickColorCoherent(chaussuresPool, picked, brandPrefs, avoidIds);
+  const chaussures = thompsonPick(chaussuresPool, picked, prefs, avoidIds);
   if (chaussures) picked.chaussures = chaussures;
 
   // Veste logic
   let veste = null;
   const needVeste = temp < 10 || (temp < 20 && Math.random() > 0.3) || (wCat === 'rain' || wCat === 'showers' || wCat === 'storm');
   if (needVeste && vestePool.length > 0) {
-    veste = pickColorCoherent(vestePool, picked, brandPrefs, avoidIds);
+    veste = thompsonPick(vestePool, picked, prefs, avoidIds);
     if (veste) picked.veste = veste;
   }
 
   // Accessoire (optional, ~60% chance)
   let accessoire = null;
   if (accessoirePool.length > 0 && Math.random() > 0.4) {
-    accessoire = pickColorCoherent(accessoirePool, picked, brandPrefs, avoidIds);
+    accessoire = thompsonPick(accessoirePool, picked, prefs, avoidIds);
   }
 
   // Brand coherence: if 3+ items same brand, swap one
@@ -954,14 +1168,14 @@ function App() {
   const [enterFrom, setEnterFrom] = useState(100);
   const [userSignals, setUserSignals] = useState({
     swipeRights: [], swipeLefts: [], tappedSlots: [],
-    preferredBrands: {}, preferredTypes: {}, avoidedProducts: []
+    preferredBrands: {}, preferredTypes: {}, avoidedProducts: [],
+    preferences: initPreferences(),
   });
   const [bundleCount, setBundleCount] = useState(0);
   const [nudge, setNudge] = useState(null);
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isScrolled, setIsScrolled] = useState(false);
-  const [showContextInput, setShowContextInput] = useState(false);
   const [contextInput, setContextInput] = useState('');
   const [cartLoading, setCartLoading] = useState(false);
 
@@ -995,11 +1209,22 @@ function App() {
     setActiveSlot(null);
     setAlternatives(null);
 
-    // Record signals
+    // Record signals + update Thompson preferences
     setUserSignals(prev => {
-      const next = { ...prev };
+      const next = { ...prev, preferences: { ...prev.preferences } };
+      // Deep clone preference distributions
+      for (const axis of Object.keys(next.preferences)) {
+        next.preferences[axis] = { ...prev.preferences[axis] };
+        for (const val of Object.keys(next.preferences[axis])) {
+          next.preferences[axis][val] = { ...prev.preferences[axis][val] };
+        }
+      }
       if (currentBundle) {
         const entry = { items: currentBundle.items, timestamp: Date.now() };
+        // Update Thompson Sampling distributions
+        const bundleAxes = extractBundleAxes(currentBundle);
+        updatePreferences(next.preferences, bundleAxes, direction);
+
         if (direction === 'right') {
           next.swipeRights = [...prev.swipeRights, entry];
           Object.values(currentBundle.items).filter(Boolean).forEach(p => {
@@ -1179,7 +1404,6 @@ function App() {
     }
     setContextLoading(false);
     setContextInput('');
-    setShowContextInput(false);
     // Recompose bundle
     const newBundle = composeBundle(catalog, weather, userSignals, previousBundleRef.current, 'right');
     previousBundleRef.current = newBundle;
@@ -1293,38 +1517,28 @@ function App() {
         )}
 
         {nudge && <NudgeToast message={nudge} onDone={() => setNudge(null)} />}
+      </div>
 
-        {showContextInput && (
-          <div className="context-input-bar">
-            {contextLoading ? (
-              <div className="context-loading">
-                <div className="context-loading-text">Je compose ton look...</div>
-                <div className="loading-bar"><div className="loading-bar-inner"></div></div>
-              </div>
-            ) : (
-              <>
-                <div className="context-input-wrap">
-                  <input className="context-input" type="text" value={contextInput}
-                    onChange={e => setContextInput(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleContextSubmit()}
-                    placeholder="J'ai un mariage en juin..."
-                    autoFocus />
-                  <button className="context-send" onClick={handleContextSubmit}
-                    disabled={!contextInput.trim()}>→</button>
-                </div>
-                <div className="context-dismiss" onClick={() => setShowContextInput(false)}>
-                  Fermer
-                </div>
-              </>
-            )}
+      <div className="context-input-bar">
+        {contextLoading ? (
+          <div className="context-loading">
+            <div className="loading-bar" style={{width:60}}><div className="loading-bar-inner"></div></div>
+            <span style={{fontSize:'.75rem',color:'var(--accent)',fontStyle:'italic'}}>Je compose ton look...</span>
+          </div>
+        ) : (
+          <div className="context-input-wrap">
+            <input className="context-input" type="text" value={contextInput}
+              onChange={e => setContextInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleContextSubmit()}
+              placeholder="Un brunch dimanche, un date ce soir..." />
+            <button className="context-send" onClick={handleContextSubmit}
+              disabled={!contextInput.trim()}>→</button>
           </div>
         )}
       </div>
 
       <div className="bottom-bar">
         <button className="swipe-btn" onClick={() => handleNewBundle('left')} title="Autre look">✕</button>
-        <button className="swipe-btn context-toggle" onClick={() => setShowContextInput(v => !v)}
-          title="Dis-moi ce que tu cherches" style={showContextInput ? {borderColor:'var(--accent)',color:'var(--accent)'} : {}}>✎</button>
         <button className="cta-button primary" onClick={handleCTA} disabled={cartLoading}>
           {cartLoading ? 'Ajout au panier...' : 'Je prends ce look'}
         </button>

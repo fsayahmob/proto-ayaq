@@ -149,13 +149,7 @@ pointer-events:none;z-index:25;opacity:0;transition:none}
 0%{opacity:0;transform:translate(-50%,-50%) scale(0) rotate(-15deg)}
 50%{opacity:1;transform:translate(-50%,-50%) scale(1.15) rotate(5deg)}
 100%{opacity:.85;transform:translate(-50%,-50%) scale(1) rotate(0)}}
-.swipe-stamp-icon{font-size:5rem;filter:drop-shadow(0 4px 20px rgba(0,0,0,.15))}
-.swipe-stamp.like .swipe-stamp-icon{color:var(--success)}
-.swipe-stamp.nope .swipe-stamp-icon{color:var(--reject)}
-.swipe-stamp-ring{width:100px;height:100px;border-radius:50%;
-border:3px solid currentColor;display:flex;align-items:center;justify-content:center}
-.swipe-stamp.like .swipe-stamp-ring{border-color:var(--success);color:var(--success)}
-.swipe-stamp.nope .swipe-stamp-ring{border-color:var(--reject);color:var(--reject)}
+.swipe-stamp-icon{font-size:4rem;color:var(--text-secondary);opacity:.4}
 
 .alternatives-panel{position:sticky;bottom:0;left:0;right:0;
 background:linear-gradient(to top,var(--bg-card) 90%,transparent);
@@ -1874,9 +1868,7 @@ function App() {
 
         {swipeStamp && (
           <div className={`swipe-stamp visible ${swipeStamp}`}>
-            <div className="swipe-stamp-ring">
-              <div className="swipe-stamp-icon">{swipeStamp === 'like' ? '♥' : '✕'}</div>
-            </div>
+            <div className="swipe-stamp-icon">{swipeStamp === 'like' ? '♥' : '✕'}</div>
           </div>
         )}
 

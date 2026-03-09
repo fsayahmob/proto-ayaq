@@ -212,6 +212,11 @@ border:none;color:var(--bg);font-size:1rem;cursor:pointer;flex-shrink:0;
 display:flex;align-items:center;justify-content:center}
 .context-dismiss{text-align:center;margin-top:6px;font-size:.6rem;color:var(--text-secondary);
 cursor:pointer;opacity:.6}
+.context-send:disabled{opacity:.3;cursor:default}
+.context-loading{text-align:center;padding:8px 0}
+.context-loading-text{font-family:var(--font-serif);font-size:.9rem;color:var(--accent);
+margin-bottom:10px;font-style:italic}
+.context-loading .loading-bar{width:80px;margin:0 auto}
 </style>
 </head>
 <body>
@@ -987,7 +992,6 @@ function App() {
   const [showContextInput, setShowContextInput] = useState(false);
   const [contextInput, setContextInput] = useState('');
   const [cartLoading, setCartLoading] = useState(false);
-  const [consecutiveLefts, setConsecutiveLefts] = useState(0);
 
   const dragRef = useRef({ startX: 0, startY: 0, dragging: false, startTime: 0 });
   const cardRef = useRef(null);
@@ -1018,17 +1022,6 @@ function App() {
     setIsAnimating(true);
     setActiveSlot(null);
     setAlternatives(null);
-
-    // Frustration detection: 3+ consecutive left swipes → show context input
-    if (direction === 'left') {
-      setConsecutiveLefts(prev => {
-        const next = prev + 1;
-        if (next >= 3 && !showContextInput) setShowContextInput(true);
-        return next;
-      });
-    } else {
-      setConsecutiveLefts(0);
-    }
 
     // Record signals
     setUserSignals(prev => {
@@ -1181,13 +1174,11 @@ function App() {
   }, [currentBundle]);
 
   // Context input submit
+  const [contextLoading, setContextLoading] = useState(false);
   const handleContextSubmit = useCallback(async () => {
-    if (!contextInput.trim() || !catalog || !weather) return;
+    if (!contextInput.trim() || !catalog || !weather || contextLoading) return;
     const msg = contextInput.trim();
-    setContextInput('');
-    setShowContextInput(false);
-    setConsecutiveLefts(0);
-    // Use Gemini to get style direction, then recompose
+    setContextLoading(true);
     try {
       const resp = await fetch('/api/gemini-isciacus', {
         method: 'POST',
@@ -1199,7 +1190,6 @@ function App() {
       });
       if (resp.ok) {
         const direction = await resp.json();
-        // Use editorial from Gemini
         if (direction.editorial) {
           setNudge(direction.editorial);
         }
@@ -1207,12 +1197,15 @@ function App() {
     } catch (e) {
       console.warn('[Gemini] context error:', e.message);
     }
-    // Recompose bundle regardless
+    setContextLoading(false);
+    setContextInput('');
+    setShowContextInput(false);
+    // Recompose bundle
     const newBundle = composeBundle(catalog, weather, userSignals, previousBundleRef.current, 'right');
     previousBundleRef.current = newBundle;
     setCurrentBundle(newBundle);
     setBundleCount(c => c + 1);
-  }, [contextInput, catalog, weather, userSignals, dayName, period, weatherLabel]);
+  }, [contextInput, catalog, weather, userSignals, dayName, period, weatherLabel, contextLoading]);
 
   if (loading) return <LoadingScreen />;
   if (!currentBundle) return <LoadingScreen />;
@@ -1301,23 +1294,35 @@ function App() {
 
         {showContextInput && (
           <div className="context-input-bar">
-            <div className="context-input-wrap">
-              <input className="context-input" type="text" value={contextInput}
-                onChange={e => setContextInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleContextSubmit()}
-                placeholder="J'ai un mariage en juin..."
-                autoFocus />
-              <button className="context-send" onClick={handleContextSubmit}>→</button>
-            </div>
-            <div className="context-dismiss" onClick={() => { setShowContextInput(false); setConsecutiveLefts(0); }}>
-              Continuer sans préciser
-            </div>
+            {contextLoading ? (
+              <div className="context-loading">
+                <div className="context-loading-text">Je compose ton look...</div>
+                <div className="loading-bar"><div className="loading-bar-inner"></div></div>
+              </div>
+            ) : (
+              <>
+                <div className="context-input-wrap">
+                  <input className="context-input" type="text" value={contextInput}
+                    onChange={e => setContextInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleContextSubmit()}
+                    placeholder="J'ai un mariage en juin..."
+                    autoFocus />
+                  <button className="context-send" onClick={handleContextSubmit}
+                    disabled={!contextInput.trim()}>→</button>
+                </div>
+                <div className="context-dismiss" onClick={() => setShowContextInput(false)}>
+                  Fermer
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
 
       <div className="bottom-bar">
         <button className="swipe-btn" onClick={() => handleNewBundle('left')} title="Autre look">✕</button>
+        <button className="swipe-btn context-toggle" onClick={() => setShowContextInput(v => !v)}
+          title="Dis-moi ce que tu cherches" style={showContextInput ? {borderColor:'var(--accent)',color:'var(--accent)'} : {}}>✎</button>
         <button className="cta-button primary" onClick={handleCTA} disabled={cartLoading}>
           {cartLoading ? 'Ajout au panier...' : 'Je prends ce look'}
         </button>

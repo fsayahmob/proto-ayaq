@@ -18,7 +18,7 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans markdown, sans backticks, ju
   "freq": "occasionnel" | "regulier" | "intensif",
   "injury": "aucune" | "coude" | "epaule" | "genoux",
   "tags": ["tag1", "tag2", ...],
-  "summary": "Résumé en 1 phrase du profil détecté, en français, chaleureux et expert"
+  "summary": "Réponse conversationnelle en 1-2 phrases, comme un coach padel expert qui parle à son élève. Reformule ce que tu as compris du joueur et annonce ce que tu vas lui proposer. JAMAIS de format 'Profil X · Y'. Exemple : 'Top, je vois un joueur qui débute et veut progresser vite ! Je te prépare un setup confort avec de la tolérance pour construire ta technique.'"
 }
 
 Tags disponibles (choisis ceux qui correspondent au profil du joueur, 3-8 tags) :
@@ -50,7 +50,15 @@ Règles d'inférence :
 - Aucune douleur → injury = "aucune"
 
 Si une info manque, utilise la valeur la plus probable.
-Le summary doit être personnel et encourageant.`;
+
+IMPORTANT pour le summary :
+- Parle comme un coach expert qui s'adresse directement au joueur (tutoiement)
+- Reformule ce que tu as compris de SA situation spécifique
+- Annonce ce que tu vas lui proposer
+- JAMAIS de format générique type "Profil Intermédiaire · Polyvalent"
+- Sois chaleureux, enthousiaste et expert
+- Exemple bon : "Ah super, un joueur qui débute et veut progresser vite ! Je te prépare un setup confortable avec du sweet-spot pour gagner en confiance."
+- Exemple mauvais : "Profil détecté : Débutant · Polyvalent"`;
 
 export default async function handler(req, res) {
   // CORS
@@ -72,20 +80,20 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "GEMINI_API_KEY not configured" });
     }
 
-    // Build prompt: if refining an existing profile, include context
-    let userText = message;
+    // Build prompt: separate system context from user message
+    let systemText = SYSTEM_PROMPT;
     if (currentProfile && typeof currentProfile === "object") {
-      userText = `Profil actuel du joueur : level=${currentProfile.level}, style=${currentProfile.style}, position=${currentProfile.position}, freq=${currentProfile.freq}, injury=${currentProfile.injury}.\n\nLe joueur demande maintenant : "${message}"\n\nMets à jour son profil en tenant compte de sa demande. Ne change que les champs concernés par sa demande, garde les autres identiques.`;
+      systemText += `\n\nCONTEXTE : Le joueur a déjà un profil établi : level=${currentProfile.level}, style=${currentProfile.style}, position=${currentProfile.position}, freq=${currentProfile.freq}, injury=${currentProfile.injury}.\nMets à jour son profil en tenant compte de sa nouvelle demande. Ne change que les champs concernés, garde les autres identiques.`;
     }
 
     const geminiResp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-          contents: [{ parts: [{ text: userText }] }],
+          system_instruction: { parts: [{ text: systemText }] },
+          contents: [{ parts: [{ text: message }] }],
           generationConfig: {
             temperature: 0.3,
             maxOutputTokens: 300,

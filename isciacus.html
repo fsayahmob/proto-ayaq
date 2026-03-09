@@ -98,6 +98,7 @@ font-weight:500;letter-spacing:.08em;border-radius:8px;cursor:pointer;
 transition:background .2s,color .2s;text-align:center;text-transform:uppercase}
 .cta-button:hover{background:var(--accent);color:var(--bg)}
 .cta-button.primary{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.cta-button:disabled{opacity:.5;cursor:wait}
 .cta-button.primary:hover{opacity:.9}
 .swipe-btn{width:44px;height:44px;border-radius:50%;border:1px solid var(--border);
 background:transparent;color:var(--text-secondary);font-size:1.1rem;cursor:pointer;
@@ -196,6 +197,21 @@ font-weight:500;cursor:pointer;text-align:center;transition:background .2s,color
 .longpress-hint{position:absolute;bottom:3px;right:3px;width:16px;height:16px;
 border-radius:50%;background:rgba(201,169,110,.2);display:flex;align-items:center;
 justify-content:center;font-size:8px;color:var(--accent);pointer-events:none;opacity:.6}
+
+.context-input-bar{position:absolute;bottom:0;left:0;right:0;
+background:linear-gradient(to top,var(--bg) 80%,transparent);padding:12px 16px 16px;
+z-index:15;animation:slideUp .3s ease forwards}
+.context-input-wrap{display:flex;gap:8px;align-items:center}
+.context-input{flex:1;background:var(--bg-card);border:1px solid var(--border);
+border-radius:10px;padding:12px 14px;font-family:var(--font-sans);font-size:.85rem;
+color:var(--text);outline:none;transition:border-color .2s}
+.context-input:focus{border-color:var(--accent)}
+.context-input::placeholder{color:var(--text-secondary);font-style:italic;font-size:.8rem}
+.context-send{width:40px;height:40px;border-radius:50%;background:var(--accent);
+border:none;color:var(--bg);font-size:1rem;cursor:pointer;flex-shrink:0;
+display:flex;align-items:center;justify-content:center}
+.context-dismiss{text-align:center;margin-top:6px;font-size:.6rem;color:var(--text-secondary);
+cursor:pointer;opacity:.6}
 </style>
 </head>
 <body>
@@ -264,7 +280,7 @@ const PRODUCTS_QUERY = `query($cursor: String) {
       priceRange { minVariantPrice { amount currencyCode } }
       images(first: 1) { edges { node { url altText } } }
       variants(first: 10) { edges { node {
-        title availableForSale
+        id title availableForSale
         price { amount currencyCode }
         selectedOptions { name value }
       } } }
@@ -305,6 +321,8 @@ function categorizeProducts(products) {
   const catalog = { HAUT: [], VESTE: [], BAS: [], CHAUSSURES: [], ACCESSOIRE: [] };
   for (const p of products) {
     if (SKIP_TYPES.includes(p.productType)) continue;
+    // Attach color family
+    p._colorFamily = extractColorFamily(p);
     for (const [slot, types] of Object.entries(SLOT_MAP)) {
       if (types.includes(p.productType)) {
         catalog[slot].push(p);
@@ -323,6 +341,158 @@ async function fetchWeather() {
   } catch {
     return { temp: 14, code: 2 };
   }
+}
+
+// ─── Shopify Cart API ───────────────────────────────────────────────
+const CART_CREATE = `mutation cartCreate($input: CartInput!) {
+  cartCreate(input: $input) {
+    cart { id checkoutUrl }
+    userErrors { field message }
+  }
+}`;
+
+async function createShopifyCart(products) {
+  const lines = products.filter(Boolean).map(p => {
+    const av = p.variants.edges.find(e => e.node.availableForSale);
+    if (!av) return null;
+    return { merchandiseId: av.node.id, quantity: 1 };
+  }).filter(Boolean);
+
+  if (lines.length === 0) return null;
+
+  try {
+    const res = await fetch(STOREFRONT_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Shopify-Storefront-Access-Token': STOREFRONT_TOKEN
+      },
+      body: JSON.stringify({ query: CART_CREATE, variables: { input: { lines } } })
+    });
+    const json = await res.json();
+    if (json.data?.cartCreate?.cart?.checkoutUrl) {
+      return json.data.cartCreate.cart.checkoutUrl;
+    }
+    console.warn('[Cart] errors:', json.data?.cartCreate?.userErrors);
+  } catch (e) {
+    console.warn('[Cart] error:', e.message);
+  }
+  return null;
+}
+
+// ─── Color Coherence ────────────────────────────────────────────────
+const COLOR_KEYWORDS = {
+  NOIR: ['noir','black','dark','charcoal','storm','midnight'],
+  BLANC: ['blanc','white','ecru','cream','ivory','off-white','bone','natural','off white'],
+  MARINE: ['navy','marine','bleu','blue','indigo','ink','slate','deep blue','deep green'],
+  VERT: ['olive','green','vert','khaki','kaki','pine','lichen','sage','smoke green','rosemary'],
+  TERRE: ['brown','chocolat','cognac','tan','camel','walnut','sand','beige','stone','moutarde','palisander','cinder','rust','burn sugar'],
+  ROUGE: ['red','orange','salmon','vermillion','rose','pink','violet','purple'],
+  GRIS: ['grey','gris','silver','mist','ash','smoke','light'],
+};
+
+// Palettes: which families go well together
+const COLOR_PALETTES = [
+  ['NOIR','BLANC','GRIS'],           // Monochrome
+  ['NOIR','MARINE','BLANC'],         // Classic
+  ['TERRE','VERT','BLANC'],          // Earth
+  ['MARINE','BLANC','TERRE'],        // Maritime
+  ['NOIR','VERT','TERRE'],           // Urban outdoor
+  ['GRIS','MARINE','BLANC'],         // Soft
+  ['NOIR','TERRE','GRIS'],           // Neutral warm
+  ['VERT','TERRE','NOIR'],           // Safari
+];
+
+// Universals: these go with everything
+const UNIVERSAL_FAMILIES = new Set(['NOIR','BLANC','GRIS']);
+
+function extractColorFamily(product) {
+  // Try variant color option first
+  for (const v of product.variants.edges) {
+    for (const opt of v.node.selectedOptions) {
+      if (opt.name === 'Couleur' || opt.name === 'Color' || opt.name === 'colour') {
+        const c = opt.value.toLowerCase().replace(/[.\s]+$/,'');
+        for (const [family, keywords] of Object.entries(COLOR_KEYWORDS)) {
+          if (keywords.some(k => c.includes(k))) return family;
+        }
+      }
+    }
+  }
+  // Fallback: parse title
+  const title = product.title.toLowerCase();
+  for (const [family, keywords] of Object.entries(COLOR_KEYWORDS)) {
+    if (keywords.some(k => title.includes(k))) return family;
+  }
+  return 'NOIR'; // default neutral
+}
+
+function colorScore(items) {
+  const families = Object.values(items).filter(Boolean).map(p => p._colorFamily || 'NOIR');
+  const unique = [...new Set(families)];
+
+  // All same family = perfect
+  if (unique.length <= 1) return 10;
+
+  // Check if it matches a known palette
+  for (const palette of COLOR_PALETTES) {
+    if (unique.every(f => palette.includes(f) || UNIVERSAL_FAMILIES.has(f))) return 9;
+  }
+
+  // All universals + 1 accent = great
+  const nonUniversal = unique.filter(f => !UNIVERSAL_FAMILIES.has(f));
+  if (nonUniversal.length <= 1) return 8;
+
+  // 2 non-universal but compatible
+  if (nonUniversal.length === 2) {
+    const compatible = [['MARINE','TERRE'],['VERT','TERRE'],['MARINE','VERT'],['TERRE','ROUGE']];
+    if (compatible.some(([a,b]) =>
+      (nonUniversal.includes(a) && nonUniversal.includes(b)))) return 7;
+  }
+
+  // 3+ clashing colors
+  return Math.max(1, 5 - nonUniversal.length);
+}
+
+function pickColorCoherent(pool, existingItems, brandPrefs, avoidIds) {
+  if (!pool || pool.length === 0) return null;
+  const filtered = pool.filter(p => !avoidIds.has(p.handle));
+  if (filtered.length === 0) return pickRandom(pool);
+
+  const existingFamilies = Object.values(existingItems).filter(Boolean).map(p => p._colorFamily || 'NOIR');
+
+  // Score each candidate
+  const scored = filtered.map(p => {
+    const family = p._colorFamily || 'NOIR';
+    let score = 0;
+
+    // Color coherence
+    if (existingFamilies.length === 0) {
+      score = 5; // first pick, neutral
+    } else if (UNIVERSAL_FAMILIES.has(family)) {
+      score = 7; // universals always good
+    } else if (existingFamilies.includes(family)) {
+      score = 8; // same family = harmonious
+    } else {
+      // Check palette compatibility
+      const allFamilies = [...existingFamilies, family];
+      const nonUniv = [...new Set(allFamilies.filter(f => !UNIVERSAL_FAMILIES.has(f)))];
+      score = nonUniv.length <= 1 ? 7 : nonUniv.length <= 2 ? 5 : 2;
+    }
+
+    // Brand preference bonus
+    score += (brandPrefs[p.vendor] || 0) * 0.3;
+
+    return { p, score };
+  });
+
+  // Weighted random by score
+  const total = scored.reduce((s, x) => s + Math.max(x.score, 0.5), 0);
+  let r = Math.random() * total;
+  for (const { p, score } of scored) {
+    r -= Math.max(score, 0.5);
+    if (r <= 0) return p;
+  }
+  return scored[scored.length - 1].p;
 }
 
 // ─── Bundle Composition ─────────────────────────────────────────────
@@ -409,22 +579,30 @@ function composeBundle(catalog, weather, signals, previousBundle, direction) {
     }
   }
 
-  // Pick items
-  const haut = weightedPick(hautPool, brandPrefs, avoidIds);
-  const bas = weightedPick(basPool, brandPrefs, avoidIds);
-  const chaussures = weightedPick(chaussuresPool, brandPrefs, avoidIds);
+  // Pick items with color coherence — build progressively
+  const picked = {};
+  // Start with a hero piece (random slot) to set the color tone
+  const haut = pickColorCoherent(hautPool, picked, brandPrefs, avoidIds);
+  if (haut) picked.haut = haut;
+
+  const bas = pickColorCoherent(basPool, picked, brandPrefs, avoidIds);
+  if (bas) picked.bas = bas;
+
+  const chaussures = pickColorCoherent(chaussuresPool, picked, brandPrefs, avoidIds);
+  if (chaussures) picked.chaussures = chaussures;
 
   // Veste logic
   let veste = null;
   const needVeste = temp < 10 || (temp < 20 && Math.random() > 0.3) || (wCat === 'rain' || wCat === 'showers' || wCat === 'storm');
   if (needVeste && vestePool.length > 0) {
-    veste = weightedPick(vestePool, brandPrefs, avoidIds);
+    veste = pickColorCoherent(vestePool, picked, brandPrefs, avoidIds);
+    if (veste) picked.veste = veste;
   }
 
   // Accessoire (optional, ~60% chance)
   let accessoire = null;
   if (accessoirePool.length > 0 && Math.random() > 0.4) {
-    accessoire = weightedPick(accessoirePool, brandPrefs, avoidIds);
+    accessoire = pickColorCoherent(accessoirePool, picked, brandPrefs, avoidIds);
   }
 
   // Brand coherence: if 3+ items same brand, swap one
@@ -480,9 +658,26 @@ function bundleTotal(bundle) {
 function generateEditorial(bundle, weather, style) {
   const items = bundle.items;
   const brands = [...new Set(Object.values(items).filter(Boolean).map(p => p.vendor))];
+  const families = [...new Set(Object.values(items).filter(Boolean).map(p => p._colorFamily || 'NOIR'))];
   const temp = weather.temp;
 
+  const FAMILY_FR = {NOIR:'tons sombres',BLANC:'tons clairs',MARINE:'camaïeu bleu',
+    VERT:'palette nature',TERRE:'tons terre',ROUGE:'touche de couleur',GRIS:'palette grise'};
+
   const templates = [];
+
+  // Color-focused
+  const nonUniv = families.filter(f => !UNIVERSAL_FAMILIES.has(f));
+  if (families.length <= 2) {
+    const palette = families.map(f => FAMILY_FR[f] || f).join(' et ');
+    templates.push(`Palette ${palette} — cohérence chromatique naturelle.`);
+  }
+  if (nonUniv.length === 1) {
+    templates.push(`Base neutre rehaussée par des ${FAMILY_FR[nonUniv[0]] || 'accents'} — l'équilibre juste.`);
+  }
+  if (nonUniv.length === 0 && families.length > 1) {
+    templates.push(`Monochrome maîtrisé — quand les neutres font tout le travail.`);
+  }
 
   // Brand-focused
   if (brands.length >= 2) {
@@ -789,6 +984,10 @@ function App() {
   const [expanded, setExpanded] = useState(false);
   const [sheetProduct, setSheetProduct] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showContextInput, setShowContextInput] = useState(false);
+  const [contextInput, setContextInput] = useState('');
+  const [cartLoading, setCartLoading] = useState(false);
+  const [consecutiveLefts, setConsecutiveLefts] = useState(0);
 
   const dragRef = useRef({ startX: 0, startY: 0, dragging: false, startTime: 0 });
   const cardRef = useRef(null);
@@ -819,6 +1018,17 @@ function App() {
     setIsAnimating(true);
     setActiveSlot(null);
     setAlternatives(null);
+
+    // Frustration detection: 3+ consecutive left swipes → show context input
+    if (direction === 'left') {
+      setConsecutiveLefts(prev => {
+        const next = prev + 1;
+        if (next >= 3 && !showContextInput) setShowContextInput(true);
+        return next;
+      });
+    } else {
+      setConsecutiveLefts(0);
+    }
 
     // Record signals
     setUserSignals(prev => {
@@ -956,10 +1166,53 @@ function App() {
     }));
   }, []);
 
-  // CTA
-  const handleCTA = useCallback(() => {
-    setExpanded(true);
-  }, []);
+  // CTA → create Shopify cart and redirect to checkout
+  const handleCTA = useCallback(async () => {
+    setCartLoading(true);
+    const items = Object.values(currentBundle.items).filter(Boolean);
+    const checkoutUrl = await createShopifyCart(items);
+    setCartLoading(false);
+    if (checkoutUrl) {
+      window.open(checkoutUrl, '_blank');
+    } else {
+      // Fallback: open detail overlay
+      setExpanded(true);
+    }
+  }, [currentBundle]);
+
+  // Context input submit
+  const handleContextSubmit = useCallback(async () => {
+    if (!contextInput.trim() || !catalog || !weather) return;
+    const msg = contextInput.trim();
+    setContextInput('');
+    setShowContextInput(false);
+    setConsecutiveLefts(0);
+    // Use Gemini to get style direction, then recompose
+    try {
+      const resp = await fetch('/api/gemini-isciacus', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          context: { day: dayName, time: period, temp: weather.temp, weather: weatherLabel },
+          signals: { ...userSignals, userMessage: msg }
+        })
+      });
+      if (resp.ok) {
+        const direction = await resp.json();
+        // Use editorial from Gemini
+        if (direction.editorial) {
+          setNudge(direction.editorial);
+        }
+      }
+    } catch (e) {
+      console.warn('[Gemini] context error:', e.message);
+    }
+    // Recompose bundle regardless
+    const newBundle = composeBundle(catalog, weather, userSignals, previousBundleRef.current, 'right');
+    previousBundleRef.current = newBundle;
+    setCurrentBundle(newBundle);
+    setBundleCount(c => c + 1);
+  }, [contextInput, catalog, weather, userSignals, dayName, period, weatherLabel]);
 
   if (loading) return <LoadingScreen />;
   if (!currentBundle) return <LoadingScreen />;
@@ -1045,11 +1298,29 @@ function App() {
         </div>
 
         {nudge && <NudgeToast message={nudge} onDone={() => setNudge(null)} />}
+
+        {showContextInput && (
+          <div className="context-input-bar">
+            <div className="context-input-wrap">
+              <input className="context-input" type="text" value={contextInput}
+                onChange={e => setContextInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleContextSubmit()}
+                placeholder="J'ai un mariage en juin..."
+                autoFocus />
+              <button className="context-send" onClick={handleContextSubmit}>→</button>
+            </div>
+            <div className="context-dismiss" onClick={() => { setShowContextInput(false); setConsecutiveLefts(0); }}>
+              Continuer sans préciser
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="bottom-bar">
         <button className="swipe-btn" onClick={() => handleNewBundle('left')} title="Autre look">✕</button>
-        <button className="cta-button primary" onClick={handleCTA}>Je prends ce look</button>
+        <button className="cta-button primary" onClick={handleCTA} disabled={cartLoading}>
+          {cartLoading ? 'Ajout au panier...' : 'Je prends ce look'}
+        </button>
         <button className="swipe-btn" onClick={() => handleNewBundle('right')} title="J'aime, encore">♥</button>
       </div>
 

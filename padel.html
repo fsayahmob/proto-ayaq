@@ -762,7 +762,7 @@ function App(){
           {feedProfile&&<span style={{fontFamily:T.bf,fontSize:10,color:T.grey,marginLeft:8}}>· Profil affiné par l'IA</span>}
         </div>}
 
-        <div style={{display:"flex",flexDirection:"column",gap:20}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(100%,340px),1fr))",gap:20}}>
           {getFeedOrder().map((p,i)=>{
             const isInterested=feedInterests.find(x=>x.id===p.id);
             const nudge=feedNudgeMap[p.id];
@@ -771,8 +771,7 @@ function App(){
             const hasSpecs=!!(p.forme||p.tech);
             const totalSlides=hasSpecs?3:2;
             const onCardScroll=(e)=>{const el=e.target;const idx=Math.round(el.scrollLeft/el.offsetWidth);setFeedCardSlide(prev=>({...prev,[p.id]:idx}));};
-            return <React.Fragment key={p.id}>
-              <div ref={feedCardRef} data-feed-id={p.id} style={{position:"relative",overflow:"hidden",animation:"fadeUp 0.4s ease "+(Math.min(i,6)*0.06)+"s both",...(isInterested?{animation:"dwellGlow 0.6s ease forwards"}:{})}}>
+            return <div key={p.id} ref={feedCardRef} data-feed-id={p.id} style={{position:"relative",overflow:"hidden",animation:"fadeUp 0.4s ease "+(Math.min(i,6)*0.06)+"s both",...(isInterested?{animation:"dwellGlow 0.6s ease forwards"}:{})}}>
 
                 {/* Horizontal scroll-snap container */}
                 <div className="feed-snap" onScroll={onCardScroll} style={{display:"flex",overflowX:"auto",scrollSnapType:"x mandatory",aspectRatio:"3/4",WebkitOverflowScrolling:"touch"}}>
@@ -818,13 +817,12 @@ function App(){
                 <div style={{position:"absolute",bottom:slide===0?56:10,left:"50%",transform:"translateX(-50%)",display:"flex",gap:6,zIndex:5,pointerEvents:"none"}}>
                   {Array.from({length:totalSlides}).map((_,si)=><div key={si} style={{width:si===slide?16:6,height:6,borderRadius:3,background:si===slide?T.acc2:"rgba(255,255,255,0.3)",transition:"all 0.3s"}}/>)}
                 </div>
-              </div>
 
               {/* AI nudge — appears when interest pattern detected */}
               {nudge&&slide===0&&<div style={{padding:"12px 16px",background:"rgba(232,168,56,0.04)",borderLeft:"2px solid "+T.acc2,animation:"feedReveal 0.4s ease both",overflow:"hidden"}}>
                 <p style={{fontFamily:T.bf,fontSize:11,color:T.light,lineHeight:1.5,fontWeight:300}}>{nudge}</p>
               </div>}
-            </React.Fragment>;
+            </div>;
           })}
         </div>
 

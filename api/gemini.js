@@ -7,7 +7,7 @@
  * Setup: Add GEMINI_API_KEY in Vercel Dashboard → Settings → Environment Variables
  */
 
-const SYSTEM_PROMPT = `Tu es un expert padel de haut niveau. Tu analyses le message d'un joueur pour déterminer son profil de jeu.
+const SYSTEM_PROMPT = `Tu es un expert padel de haut niveau. Tu analyses le message d'un joueur pour déterminer son profil de jeu ET les tags produit qui correspondent à ses besoins.
 
 Réponds UNIQUEMENT avec un objet JSON valide, sans markdown, sans backticks, juste le JSON :
 
@@ -17,26 +17,36 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans markdown, sans backticks, ju
   "position": "droite" | "gauche" | "les-deux",
   "freq": "occasionnel" | "regulier" | "intensif",
   "injury": "aucune" | "coude" | "epaule" | "genoux",
+  "tags": ["tag1", "tag2", ...],
   "summary": "Résumé en 1 phrase du profil détecté, en français, chaleureux et expert"
 }
 
+Tags disponibles (choisis ceux qui correspondent au profil du joueur, 3-8 tags) :
+debutant, intermediaire, avance, expert, pro, leger, confort, tolerant, sweet-spot, progression,
+controle, defense, spin, ronde, maniable, basse, effet, placement, patience,
+polyvalent, equilibre, stable,
+puissance, diamant, attaque, smash, agressif, explosif,
+carbone, premium, competition, precision, toucher, ferme,
+protection, genoux, blessure, amorti, anti-vibration,
+femme, homme, grip, transpiration, durable, intensif, respirant, dynamique, lateral
+
 Règles d'inférence :
-- "débuter", "commencer", "nouveau", "6 mois" → level = "debutant"
-- "1-3 ans", "progresse" → level = "intermediaire"
-- "3+ ans", "compétition occasionnelle" → level = "avance"
-- "tournois", "classé", "compétiteur" → level = "expert"
-- "défense", "patience", "placement", "lob" → style = "controle"
-- "smash", "attaque", "puissance", "agressif" → style = "puissance"
-- Non précisé ou "un peu de tout" → style = "polyvalent"
+- "débuter", "commencer", "nouveau", "6 mois" → level = "debutant", tags incluent "debutant","confort","tolerant","progression"
+- "1-3 ans", "progresse" → level = "intermediaire", tags incluent "intermediaire","progression"
+- "3+ ans", "compétition occasionnelle" → level = "avance", tags incluent "avance","competition"
+- "tournois", "classé", "compétiteur" → level = "expert", tags incluent "expert","pro","competition"
+- "défense", "patience", "placement", "lob" → style = "controle", tags incluent "controle","defense","placement","patience"
+- "smash", "attaque", "puissance", "agressif" → style = "puissance", tags incluent "puissance","attaque","smash","explosif"
+- Non précisé ou "un peu de tout" → style = "polyvalent", tags incluent "polyvalent","equilibre"
 - "côté droit", "revés" → position = "droite"
 - "côté gauche", "volée au filet" → position = "gauche"
 - Non précisé → position = "les-deux"
 - "1 fois par mois", "de temps en temps" → freq = "occasionnel"
 - "1-2 fois par semaine" → freq = "regulier"
-- "3+ fois", "tous les jours" → freq = "intensif"
-- "coude", "tennis elbow" → injury = "coude"
-- "épaule", "poignet" → injury = "epaule"
-- "genou", "cheville" → injury = "genoux"
+- "3+ fois", "tous les jours" → freq = "intensif", tags incluent "intensif","durable"
+- "coude", "tennis elbow" → injury = "coude", tags incluent "confort","anti-vibration"
+- "épaule", "poignet" → injury = "epaule", tags incluent "leger","confort"
+- "genou", "cheville" → injury = "genoux", tags incluent "amorti","protection","genoux"
 - Aucune douleur → injury = "aucune"
 
 Si une info manque, utilise la valeur la plus probable.
@@ -115,6 +125,13 @@ export default async function handler(req, res) {
       if (!allowed.includes(profile[key])) {
         profile[key] = allowed[Math.floor(allowed.length / 2)];
       }
+    }
+
+    // Ensure tags is an array of strings
+    if (!Array.isArray(profile.tags)) {
+      profile.tags = [];
+    } else {
+      profile.tags = profile.tags.filter(t => typeof t === "string").slice(0, 15);
     }
 
     return res.status(200).json(profile);
